@@ -71,6 +71,24 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 #bar button{font:700 15px var(--font);color:var(--ui);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:9px 14px}
 #bar button.on{color:var(--bg);background:var(--eye);border-color:var(--eye)}
 #bar button:focus-visible{outline:2px solid var(--eye);outline-offset:2px}
+#teach{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:68%;overflow-y:auto;touch-action:pan-y;
+  background:#0c1218;border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+  padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#teach[hidden]{display:none}
+#teach .in{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+#teach h2{margin:0;font:800 18px var(--font);color:var(--eye)}
+#teach p{margin:0;font:600 14px/1.4 var(--font);color:#e6f1f7}
+#teach label{font:700 13px var(--font);margin-top:4px}
+#teach input{font:600 16px var(--font);color:#e6f1f7;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0;
+  -webkit-user-select:text;user-select:text}
+#teach input:focus-visible,#teach button:focus-visible{outline:2px solid var(--eye);outline-offset:1px}
+#teach button{font:800 15px var(--font);color:var(--bg);background:var(--eye);border:0;border-radius:12px;padding:11px 14px}
+#teach button.ghost{background:var(--chip);color:var(--ui);border:1px solid var(--line)}
+#teach .row{display:flex;gap:8px}#teach .row input{flex:1}
+#t-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+#t-list li{display:flex;gap:8px;align-items:center;font:600 14px/1.3 var(--font);color:#e6f1f7;background:var(--chip);border-radius:10px;padding:6px 6px 6px 10px}
+#t-list li span{flex:1;min-width:0;overflow-wrap:anywhere}
+#t-list li button{padding:6px 10px}
 #start{position:fixed;inset:0;z-index:5;background:var(--bg);display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;padding:24px;text-align:center}
 #start[hidden]{display:none}
 #start button{font:800 20px var(--font);color:var(--bg);background:var(--eye);border:0;border-radius:999px;padding:16px 28px}
@@ -92,7 +110,23 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 <div id="status"></div>
 <video id="cam" playsinline muted></video>
 <div id="start" hidden><button id="b-start">▶️ Включить робота</button><p>Робот попросит камеру и микрофон, чтобы видеть и слышать тебя. Нажми «Разрешить».</p></div>
+<div id="teach" hidden><div class="in">
+  <h2>🎓 Чему я научился</h2>
+  <p id="t-level"></p>
+  <label for="t-name">Как тебя зовут</label>
+  <input id="t-name" maxlength="20" autocomplete="off">
+  <label for="t-q">Когда ты говоришь…</label>
+  <input id="t-q" maxlength="40" placeholder="например: доброе утро" autocomplete="off">
+  <label for="t-a">…я отвечаю</label>
+  <input id="t-a" maxlength="80" placeholder="например: Доброе утро, хозяин!" autocomplete="off">
+  <button id="t-add">Запомнить</button>
+  <ul id="t-list"></ul>
+  <label for="t-say">Написать роботу (если голос не работает)</label>
+  <div class="row"><input id="t-say" maxlength="80" placeholder="например: привет" autocomplete="off"><button id="t-send">➤</button></div>
+  <button id="t-close" class="ghost">Закрыть</button>
+</div></div>
 <div id="bar">
+  <button id="b-teach">🎓 Учить</button>
   <button id="b-work">💼 Я работаю</button>
   <button id="b-min">⏱ 25 мин</button>
   <button id="b-quiet">🤫 Тихо</button>
@@ -109,6 +143,40 @@ const cycle=['normal','happy','surprised','sad','angry','love'];
 let emo='normal',touching=false,lastInput=Date.now(),manualSleep=false;
 let quietUntil=0,hurtUntil=0,working=false,workStart=0,alarm=false,workMin=25,strokes=0;
 const quiet=()=>Date.now()<quietUntil, hurt=()=>Date.now()<hurtUntil;
+
+/* ---------- memory: what the robot has learned (kept on this phone) ---------- */
+let mem={name:'Абдулла',pairs:[],facts:[],pats:0,yells:0,days:[],level:1};
+try{Object.assign(mem,JSON.parse(localStorage.getItem('robot-mem')||'{}'))}catch(e){}
+function save(){try{localStorage.setItem('robot-mem',JSON.stringify(mem))}catch(e){}}
+const LV=['','знакомый','приятель','друг','лучший друг'];
+const points=()=>Math.max(0,mem.pats*2+mem.days.length*5+(mem.pairs.length+mem.facts.length)*3-mem.yells*3);
+const levelNow=()=>{const p=points();return p>=60?4:p>=25?3:p>=8?2:1};
+function grow(){const l=levelNow(),up=l>mem.level;mem.level=l;save();paintTeach();
+  if(up){setEmo('love');say('Ура! Теперь я твой '+LV[l]+'!',5000,true)}return up}
+(function(){const d=new Date().toISOString().slice(0,10);if(!mem.days.includes(d)){mem.days.push(d);save()}})();
+function addPair(q,a){q=q.trim().toLowerCase().replace(/[.!?,]+$/,'');a=a.trim();if(!q||!a)return;
+  mem.pairs=mem.pairs.filter(x=>x.q!==q);mem.pairs.push({q,a});if(mem.pairs.length>30)mem.pairs.shift();
+  if(!grow()){setEmo('happy');say('Выучил! На «'+q+'» отвечу «'+a+'»',4500,true)}}
+function learn(s){let m;
+  if(m=s.match(/меня зовут\s+([\p{L}-]+)/u)){mem.name=m[1][0].toUpperCase()+m[1].slice(1);
+    if(!grow()){setEmo('happy');say('Запомнил! Ты — '+mem.name,4000,true)}return true}
+  if(m=s.match(/когда я (?:говорю|скажу)\s+(.+?)[,\s]+(?:ты )?(?:отвечай|говори|скажи)\s+(.+)/)){addPair(m[1],m[2]);return true}
+  if(/что ты (помнишь|знаешь|выучил)/.test(s)){
+    const all=[...mem.facts,...mem.pairs.map(p=>'на «'+p.q+'» отвечаю «'+p.a+'»')];
+    setEmo('happy',true);say(all.length?'Я помню: '+all.slice(-3).join('; '):'Пока ничего. Научи меня!',8000,true);return true}
+  if(/забудь вс[её]/.test(s)){mem.pairs=[];mem.facts=[];grow();setEmo('surprised');say('Ой… я всё забыл',3000,true);return true}
+  if(m=s.match(/запомни[,:]?\s+(?:что\s+)?(.+)/)){mem.facts.push(m[1]);if(mem.facts.length>20)mem.facts.shift();
+    if(!grow()){setEmo('happy');say('Запомнил: '+m[1],4000,true)}return true}
+  const p=mem.pairs.find(p=>s.includes(p.q));if(p){setEmo('happy');say(p.a,4500,true);return true}
+  return false}
+function paintTeach(){if(!$('t-level'))return;
+  $('t-level').textContent='Сейчас я твой '+LV[mem.level]+' ('+points()+' очков). Гладь меня, учи и заходи каждый день — дружба растёт. Кричишь — падает.';
+  if(document.activeElement!==$('t-name'))$('t-name').value=mem.name;
+  const ul=$('t-list');ul.textContent='';
+  const row=(text,del)=>{const li=document.createElement('li'),sp=document.createElement('span'),b=document.createElement('button');
+    sp.textContent=text;b.textContent='✕';b.className='ghost';b.onclick=()=>{del();grow()};li.append(sp,b);ul.append(li)};
+  mem.pairs.forEach((p,i)=>row('«'+p.q+'» → «'+p.a+'»',()=>mem.pairs.splice(i,1)));
+  mem.facts.forEach((f,i)=>row('Помню: '+f,()=>mem.facts.splice(i,1)));}
 
 /* ---------- sound: little chirps made right in the browser ---------- */
 let ac=null,tts=null;
@@ -168,9 +236,10 @@ face.addEventListener('pointerdown',ev=>{audio();touching=true;moved=0;downAt=Da
   if(emo!=='sleep'&&!hurt()){const[x,y]=pt(ev);look(x,y)}});
 face.addEventListener('pointermove',ev=>{if(!touching&&ev.pointerType!=='mouse')return;lastInput=Date.now();
   if(touching){moved+=Math.abs(ev.clientX-lastX);lastX=ev.clientX}
-  if(hurt()){if(touching&&moved>innerWidth*1.2){forgive('Ладно… я тебя прощаю 💗')}return}
+  if(hurt()){if(touching&&moved>innerWidth*1.2){moved=21;mem.pats++;forgive('Ладно… я тебя прощаю 💗');grow()}return}
   if(emo!=='sleep'){const[x,y]=pt(ev);look(x,y)}});
 face.addEventListener('pointerup',()=>{touching=false;lastInput=Date.now();
+  if(moved>innerWidth*1.2&&!hurt()&&!alarm&&emo!=='sleep'){mem.pats++;if(!grow()){setEmo('love');say('Мрр… приятно 💗',2500);setTimeout(()=>emo==='love'&&setEmo(working?'focus':'normal',true),2500)}return}
   if(moved>20)return; // it was a stroke, not a tap
   if(alarm){stopAlarm();return}
   if(hurt()){say('Я обиделся. Погладь меня пальцем…',4000);SND.hurt();return}
@@ -184,7 +253,7 @@ function setQuiet(on){quietUntil=on?Date.now()+10*60000:0;$('b-quiet').classList
   if(on){if(tts)tts.stop&&tts.stop();stopAlarmSound();setEmo('shy',true);say('Понял, молчу 🤐',3000)}
   else{setEmo('happy');say('Можно шуметь? Ура!',2500)}}
 function yell(){if(emo==='sleep'){manualSleep=false;$('b-sleep').classList.remove('on')}
-  hurtUntil=Date.now()+25000;alarm=false;root.classList.remove('alarm');
+  hurtUntil=Date.now()+25000-(mem.level-1)*5000;mem.yells++;save();paintTeach();alarm=false;root.classList.remove('alarm');
   emo='hurt';face.className='hurt';look(-1,.5);SND.hurt();say('Зачем ты кричишь?.. Я обиделся.',5000);}
 function forgive(text){hurtUntil=0;setEmo('love');say(text,3500,true);setTimeout(()=>emo==='love'&&setEmo('normal',true),3500)}
 function startWork(){working=true;workStart=Date.now();$('b-work').classList.add('on');$('b-work').textContent='💼 Работаю…';
@@ -194,7 +263,7 @@ function stopWork(){working=false;alarm=false;root.classList.remove('alarm');$('
 let alarmInt;
 function stopAlarmSound(){clearInterval(alarmInt)}
 function startAlarm(){alarm=true;root.classList.add('alarm');setEmo('surprised',true);
-  say('Абдулла! Ты сидишь уже '+workMin+' мин. Встань и разомнись! Тапни меня',0,true);
+  say(mem.name+'! Ты сидишь уже '+workMin+' мин. Встань и разомнись! Тапни меня',0,true);
   SND.alarm();stopAlarmSound();alarmInt=setInterval(()=>{if(alarm){SND.alarm();setEmo(emo==='happy'?'surprised':'happy',true)}},1800)}
 function stopAlarm(){alarm=false;stopAlarmSound();root.classList.remove('alarm');workStart=Date.now();
   setEmo('love');say('Молодец! Отдохни минутку 💗',4000,true);setTimeout(()=>{if(working&&emo==='love')setEmo('focus',true)},4000)}
@@ -213,6 +282,12 @@ setInterval(()=>{const now=Date.now(),h=new Date().getHours(),night=h>=23||h<7;
 },1000);
 
 /* ---------- buttons ---------- */
+$('b-teach').onclick=()=>{audio();paintTeach();$('teach').hidden=false;bar.classList.add('hide')};
+$('t-close').onclick=()=>{$('teach').hidden=true;wake()};
+$('t-name').onchange=()=>{const v=$('t-name').value.trim();if(v){mem.name=v;save();say('Запомнил! Ты — '+v,3000,true)}};
+$('t-add').onclick=()=>{addPair($('t-q').value,$('t-a').value);if($('t-q').value.trim()&&$('t-a').value.trim()){$('t-q').value='';$('t-a').value=''}};
+function sendTyped(){const v=$('t-say').value.trim();if(!v)return;$('t-say').value='';audio();heard(v)}
+$('t-send').onclick=sendTyped;$('t-say').addEventListener('keydown',e=>{if(e.key==='Enter')sendTyped()});
 const MINS=[25,50,1];
 $('b-work').onclick=()=>{audio();working?stopWork():startWork()};
 $('b-min').onclick=()=>{workMin=MINS[(MINS.indexOf(workMin)+1)%MINS.length];$('b-min').textContent='⏱ '+workMin+' мин';
@@ -228,11 +303,12 @@ bar.addEventListener('pointerdown',wake);wake();
 setTimeout(()=>{if(sayT.textContent.startsWith('Привет'))sayT.textContent=''},6000);
 
 /* ---------- voice (only where the browser allows it) ---------- */
-function heard(text){const s=text.toLowerCase();lastInput=Date.now();
+function heard(text){const s=text.toLowerCase().trim().replace(/[.!?]+$/,'');lastInput=Date.now();
+  if(learn(s))return;
   if(/тихо|тише|молчи|замолчи|не шуми/.test(s)){if(!quiet())setQuiet(true);return}
   if(/дурак|плохой|отстань|надоел|заткнись/.test(s)){yell();return}
   if(/прости|извини|хороший|молодец|люблю/.test(s)){forgive('И я тебя люблю 💗');return}
-  if(/привет|здравствуй/.test(s)){setEmo('happy');say('Привет, Абдулла!',3000,true);return}
+  if(/привет|здравствуй/.test(s)){setEmo('happy');say('Привет, '+mem.name+'!',3000,true);return}
   if(/спать|спи|спокойной/.test(s)){manualSleep=true;$('b-sleep').classList.add('on');setEmo('sleep');return}
   if(/проснись|подъ[её]м|вставай/.test(s)){manualSleep=false;$('b-sleep').classList.remove('on');setEmo('surprised');return}
   if(/работа/.test(s)){if(!working)startWork();return}
@@ -259,11 +335,12 @@ $('b-start').onclick=async()=>{$('start').hidden=true;audio();voiceOn=true;
 
 function startEars(stream){if(!ac)return;let an;
   try{const src=ac.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));an=ac.createAnalyser();an.fftSize=1024;src.connect(an)}catch(e){return}
-  const buf=new Float32Array(an.fftSize);let loud=0;
+  const buf=new Float32Array(an.fftSize);let loud=0,ambient=.02;
   setInterval(()=>{an.getFloatTimeDomainData(buf);let sum=0;for(let i=0;i<buf.length;i++)sum+=buf[i]*buf[i];
     const rms=Math.sqrt(sum/buf.length);
     if(Date.now()<selfSound){loud=0;return}
-    loud=rms>.2?loud+1:0;
+    const thr=Math.max(.18,ambient*5);if(rms<thr)ambient=ambient*.98+rms*.02;
+    loud=rms>thr?loud+1:0;
     if(loud>=3&&!hurt()){loud=0;yell()}},100);}
 
 async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(stream.getVideoTracks());
@@ -282,7 +359,7 @@ async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(st
       const wasGone=!seen&&now-lastSeen>6000;seen=true;lastSeen=now;status('👁 вижу тебя');
       if(emo==='sleep'||hurt())return;
       if(!touching){gazeHold=now;look(Math.max(-1,Math.min(1,x*1.3)),Math.max(-1,Math.min(1,y)))}
-      if(wasGone&&!alarm&&!working){setEmo('happy',true);SND.hello();say('О! Я тебя вижу!',3000,true);lastInput=now;
+      if(wasGone&&!alarm&&!working){setEmo('happy',true);SND.hello();say('О! '+mem.name+', я тебя вижу!',3000,true);lastInput=now;
         setTimeout(()=>emo==='happy'&&setEmo('normal',true),3000)}
     }else if(seen&&now-lastSeen>4000){seen=false;status('👁 не вижу тебя');
       if(emo!=='sleep'&&!hurt()&&!alarm&&!working){setEmo('sad',true);SND.where();say('Ты где?..',3000);
