@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>[hidden]{display:none!important}</style>
 </head>
 <body style="margin:0">
 <title>Глаза робота</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: one full-screen face, two eyes centred, a control strip that fades away */
+/* Layout: one full-screen face, speech bubble on top, a control strip that fades away */
 :root{
   --bg:#05070a; --eye:#5ef2ff; --glow:rgba(94,242,255,.45);
-  --blush:#ff7aa8; --ui:#9fb3c0; --chip:#121820;
+  --blush:#ff7aa8; --ui:#9fb3c0; --chip:#121820; --line:#223040;
   --font:"Nunito",system-ui,sans-serif;
   color-scheme:dark;
 }
@@ -19,32 +20,36 @@ html,body{height:100%;background:var(--bg);color:var(--ui);overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none}
 body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 #face{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:12vmin;cursor:pointer}
-.wrap{transition:transform .35s cubic-bezier(.3,1.4,.5,1)}
+.wrap{position:relative;display:flex;justify-content:center;transition:transform .35s cubic-bezier(.3,1.4,.5,1)}
 .eye{position:relative;width:24vmin;height:32vmin;background:var(--eye);border-radius:32%;
   overflow:hidden;box-shadow:0 0 6vmin var(--glow);
-  transition:transform .25s ease,border-radius .3s ease,height .3s ease,width .3s ease}
+  transition:transform .25s ease,border-radius .3s ease,height .3s ease,width .3s ease,background .3s}
 .lid{position:absolute;left:-25%;width:150%;height:0;background:var(--bg);transition:height .3s ease,transform .3s ease,border-radius .3s}
 .lid.t{top:-2%;transform-origin:50% 0}
 .lid.b{bottom:-2%;transform-origin:50% 100%}
 .blush{position:absolute;bottom:-9vmin;width:12vmin;height:5vmin;border-radius:50%;background:var(--blush);
   filter:blur(1.5vmin);opacity:0;transition:opacity .4s}
-.wrap{position:relative;display:flex;justify-content:center}
 .blink .eye{transform:scaleY(.08)!important}
 
 /* emotions */
 .happy .lid.b{height:52%;border-radius:50% 50% 0 0/100% 100% 0 0}
-.happy .blush,.love .blush{opacity:.55}
-.sad .lid.t{height:42%}
-.sad #L .lid.t{transform:rotate(20deg)}
-.sad #R .lid.t{transform:rotate(-20deg)}
-.sad .eye{height:28vmin}
+.happy .blush,.love .blush,.shy .blush{opacity:.55}
+.sad .lid.t,.hurt .lid.t{height:42%}
+.sad #L .lid.t,.hurt #L .lid.t{transform:rotate(20deg)}
+.sad #R .lid.t,.hurt #R .lid.t{transform:rotate(-20deg)}
+.sad .eye,.hurt .eye{height:28vmin}
+.hurt .eye{height:22vmin;width:20vmin}
 .angry .lid.t{height:40%}
 .angry #L .lid.t{transform:rotate(-22deg)}
 .angry #R .lid.t{transform:rotate(22deg)}
 .surprised .eye{width:28vmin;height:28vmin;border-radius:50%}
 .love .eye{border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:var(--blush);box-shadow:0 0 6vmin rgba(255,122,168,.5)}
+.shy .eye{height:16vmin;width:20vmin}
+.focus .lid.t{height:30%}
 .sleep .eye{transform:scaleY(.07)}
 .sleep .wrap{transform:translate(0,4vmin)!important}
+.alarm #face{animation:hop .5s infinite}
+@keyframes hop{50%{transform:translateY(-3vmin)}}
 
 #zzz{position:fixed;right:18vmin;top:22vh;font:800 7vmin var(--font);color:var(--eye);opacity:0;pointer-events:none}
 .sleep #zzz{opacity:1}
@@ -53,89 +58,175 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 #zzz span:nth-child(3){animation-delay:.8s;font-size:.6em}
 @keyframes z{0%{transform:translateY(0);opacity:0}30%{opacity:1}100%{transform:translateY(-6vmin);opacity:0}}
 
+#say{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:0;right:0;display:flex;justify-content:center;
+  padding:0 16px;pointer-events:none}
+#say span{max-width:520px;background:var(--chip);border:1px solid var(--line);color:#e6f1f7;border-radius:18px;
+  padding:10px 16px;font:700 16px/1.35 var(--font);text-align:center;text-wrap:balance;transition:opacity .5s}
+#say span:empty{opacity:0}
+
 #bar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
   padding:12px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   transition:opacity .5s}
 #bar.hide{opacity:0;pointer-events:none}
-#bar button{font:700 15px var(--font);color:var(--ui);background:var(--chip);border:1px solid #223040;border-radius:999px;padding:9px 14px}
+#bar button{font:700 15px var(--font);color:var(--ui);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:9px 14px}
 #bar button.on{color:var(--bg);background:var(--eye);border-color:var(--eye)}
 #bar button:focus-visible{outline:2px solid var(--eye);outline-offset:2px}
-#hint{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;font:600 14px var(--font);opacity:.7;transition:opacity .6s;pointer-events:none;padding:0 16px}
-@media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span{animation:none}}
+@media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span,.alarm #face{animation:none}}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
 
+<div id="root">
 <div id="face" class="normal">
   <div class="wrap" id="L"><div class="eye"><div class="lid t"></div><div class="lid b"></div></div><div class="blush"></div></div>
   <div class="wrap" id="R"><div class="eye"><div class="lid t"></div><div class="lid b"></div></div><div class="blush"></div></div>
   <div id="zzz"><span>Z</span><span>z</span><span>z</span></div>
 </div>
-<div id="hint">Тап — сменить эмоцию · води пальцем — глаза следят</div>
+</div>
+<div id="say"><span id="say-t">Привет! Тапни меня — я поменяю настроение</span></div>
 <div id="bar">
-  <button id="b-normal" data-e="normal">🙂 Обычный</button>
-  <button id="b-happy" data-e="happy">😊 Радость</button>
-  <button id="b-surprised" data-e="surprised">😮 Удивление</button>
-  <button id="b-sad" data-e="sad">😢 Грусть</button>
-  <button id="b-angry" data-e="angry">😠 Сердит</button>
-  <button id="b-love" data-e="love">💗 Любовь</button>
-  <button id="b-sleep" data-e="sleep">😴 Сон</button>
-  <button id="b-full" data-x="full">⛶ Весь экран</button>
+  <button id="b-work">💼 Я работаю</button>
+  <button id="b-min">⏱ 25 мин</button>
+  <button id="b-quiet">🤫 Тихо</button>
+  <button id="b-yell">📢 Крикнуть</button>
+  <button id="b-sleep">😴 Сон</button>
+  <button id="b-mic" hidden>🎤 Слушай</button>
+  <button id="b-full">⛶ Весь экран</button>
 </div>
 
 <script>
-const face=document.getElementById('face'),L=document.getElementById('L'),R=document.getElementById('R'),
-      bar=document.getElementById('bar'),hint=document.getElementById('hint');
-const cycle=['normal','happy','surprised','sad','angry','love','sleep'];
+const $=id=>document.getElementById(id);
+const face=$('face'),L=$('L'),R=$('R'),bar=$('bar'),sayT=$('say-t'),root=$('root');
+const cycle=['normal','happy','surprised','sad','angry','love'];
 let emo='normal',touching=false,lastInput=Date.now(),manualSleep=false;
+let quietUntil=0,hurtUntil=0,working=false,workStart=0,alarm=false,workMin=25,strokes=0;
+const quiet=()=>Date.now()<quietUntil, hurt=()=>Date.now()<hurtUntil;
 
-function setEmo(e){emo=e;face.className=e;
-  bar.querySelectorAll('[data-e]').forEach(b=>b.classList.toggle('on',b.dataset.e===e));
-  if(e!=='sleep')look(0,0);}
-function look(x,y){ // x,y in -1..1
-  const dx=x*7,dy=y*6, sq=1-Math.abs(x)*.12;
+/* ---------- sound: little chirps made right in the browser ---------- */
+let ac=null,tts=null;
+function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(ac&&ac.state==='suspended')ac.resume().catch(()=>{});}
+function chirp(notes,type){ // notes: [[fromHz,toHz,seconds],...]
+  if(!ac||quiet()||emo==='sleep')return;let t=ac.currentTime+.02;
+  notes.forEach(n=>{const o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';
+    o.frequency.setValueAtTime(n[0],t);o.frequency.exponentialRampToValueAtTime(n[1],t+n[2]);
+    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.22,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+n[2]);
+    o.connect(g).connect(ac.destination);o.start(t);o.stop(t+n[2]+.02);t+=n[2]+.04});}
+const SND={
+  happy:()=>chirp([[700,1100,.1],[900,1500,.12]]),
+  surprised:()=>chirp([[500,1600,.18]]),
+  sad:()=>chirp([[700,400,.25],[500,280,.35]]),
+  angry:()=>chirp([[220,180,.12],[220,160,.18]],'square'),
+  love:()=>chirp([[800,1200,.1],[1200,900,.1],[900,1400,.16]]),
+  hurt:()=>chirp([[900,500,.2],[450,300,.4]],'triangle'),
+  normal:()=>chirp([[900,1000,.07]]),
+  alarm:()=>chirp([[900,1400,.09],[900,1400,.09],[1100,1700,.14]]),
+  bored:()=>chirp([[600,800,.1],[800,600,.1],[600,900,.14]])
+};
+
+/* ---------- speech bubble ---------- */
+let sayTimer;
+function say(text,ms,speak){sayT.textContent=text;clearTimeout(sayTimer);
+  if(ms)sayTimer=setTimeout(()=>{sayT.textContent=''},ms);
+  if(speak&&tts&&!quiet())tts.speak(text,{language:'ru',voice:'airy'}).catch(()=>{});}
+
+/* ---------- face ---------- */
+function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
+function look(x,y){const dx=x*7,dy=y*6,sq=1-Math.abs(x)*.12;
   L.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x>0?sq:1})`;
   R.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x<0?sq:1})`;}
-function blink(){ if(emo==='sleep')return; face.classList.add('blink');
-  setTimeout(()=>face.classList.remove('blink'),140);}
-(function blinkLoop(){setTimeout(()=>{blink(); if(Math.random()<.25)setTimeout(blink,260); blinkLoop();},2200+Math.random()*3500)})();
-// wander gaze when idle
-setInterval(()=>{ if(touching||emo==='sleep')return;
-  if(Date.now()-lastInput<2500)return;
+function blink(){if(emo==='sleep')return;face.classList.add('blink');setTimeout(()=>face.classList.remove('blink'),140);}
+(function blinkLoop(){setTimeout(()=>{blink();if(Math.random()<.25)setTimeout(blink,260);blinkLoop();},2200+Math.random()*3500)})();
+setInterval(()=>{if(touching||emo==='sleep'||hurt()||Date.now()-lastInput<2500)return;
+  if(working){look((Math.random()-.5)*.4,.5);return}
   Math.random()<.35?look(0,0):look(Math.random()*2-1,(Math.random()*2-1)*.6);},1600);
 
-// touch / mouse tracking
-function pt(ev){const p=ev.touches?ev.touches[0]:ev;return[(p.clientX/innerWidth)*2-1,(p.clientY/innerHeight)*2-1]}
-let downAt=0,moved=false;
-face.addEventListener('pointerdown',ev=>{touching=true;moved=false;downAt=Date.now();wake();const[x,y]=pt(ev);if(emo!=='sleep')look(x,y)});
-face.addEventListener('pointermove',ev=>{if(!touching&&ev.pointerType!=='mouse')return;lastInput=Date.now();moved=true;if(emo!=='sleep'){const[x,y]=pt(ev);look(x,y)}});
+/* ---------- touch ---------- */
+function pt(ev){return[(ev.clientX/innerWidth)*2-1,(ev.clientY/innerHeight)*2-1]}
+let downAt=0,moved=0,lastX=0;
+face.addEventListener('pointerdown',ev=>{audio();touching=true;moved=0;downAt=Date.now();lastX=ev.clientX;wake();
+  if(emo!=='sleep'&&!hurt()){const[x,y]=pt(ev);look(x,y)}});
+face.addEventListener('pointermove',ev=>{if(!touching&&ev.pointerType!=='mouse')return;lastInput=Date.now();
+  if(touching){moved+=Math.abs(ev.clientX-lastX);lastX=ev.clientX}
+  if(hurt()){if(touching&&moved>innerWidth*1.2){forgive('Ладно… я тебя прощаю 💗')}return}
+  if(emo!=='sleep'){const[x,y]=pt(ev);look(x,y)}});
 face.addEventListener('pointerup',()=>{touching=false;lastInput=Date.now();
-  if(!moved||Date.now()-downAt<250){ // tap
-    if(emo==='sleep'){manualSleep=false;setEmo('surprised');setTimeout(()=>emo==='surprised'&&setEmo('happy'),1200);}
-    else setEmo(cycle[(cycle.indexOf(emo)+1)%(cycle.length-1)]);}
-});
-// tilt (works where the browser allows motion sensors)
-addEventListener('deviceorientation',e=>{ if(touching||emo==='sleep'||e.gamma==null)return;
-  lastInput=Date.now(); look(Math.max(-1,Math.min(1,e.gamma/30)),Math.max(-1,Math.min(1,(e.beta-45)/30)));});
+  if(moved>20)return; // it was a stroke, not a tap
+  if(alarm){stopAlarm();return}
+  if(hurt()){say('Я обиделся. Погладь меня пальцем…',4000);SND.hurt();return}
+  if(emo==='sleep'){manualSleep=false;$('b-sleep').classList.remove('on');setEmo('surprised');say('Ой! Я проснулся',2500);setTimeout(()=>emo==='surprised'&&setEmo('happy'),1200);return}
+  setEmo(cycle[(cycle.indexOf(emo)+1)%cycle.length]);});
+addEventListener('deviceorientation',e=>{if(touching||emo==='sleep'||hurt()||e.gamma==null)return;
+  lastInput=Date.now();look(Math.max(-1,Math.min(1,e.gamma/30)),Math.max(-1,Math.min(1,(e.beta-45)/30)));});
 
-bar.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;
-  if(b.dataset.x==='full'){const d=document.documentElement;(d.requestFullscreen?d.requestFullscreen():Promise.reject()).catch(()=>{});return}
-  manualSleep=b.dataset.e==='sleep';setEmo(b.dataset.e);});
+/* ---------- character ---------- */
+function setQuiet(on){quietUntil=on?Date.now()+10*60000:0;$('b-quiet').classList.toggle('on',on);
+  if(on){if(tts)tts.stop&&tts.stop();stopAlarmSound();setEmo('shy',true);say('Понял, молчу 🤐',3000)}
+  else{setEmo('happy');say('Можно шуметь? Ура!',2500)}}
+function yell(){if(emo==='sleep'){manualSleep=false;$('b-sleep').classList.remove('on')}
+  hurtUntil=Date.now()+25000;alarm=false;root.classList.remove('alarm');
+  emo='hurt';face.className='hurt';look(-1,.5);SND.hurt();say('Зачем ты кричишь?.. Я обиделся.',5000);}
+function forgive(text){hurtUntil=0;setEmo('love');say(text,3500,true);setTimeout(()=>emo==='love'&&setEmo('normal',true),3500)}
+function startWork(){working=true;workStart=Date.now();$('b-work').classList.add('on');$('b-work').textContent='💼 Работаю…';
+  setEmo('focus',true);say('Работай спокойно. Через '+workMin+' мин позову размяться',4000)}
+function stopWork(){working=false;alarm=false;root.classList.remove('alarm');$('b-work').classList.remove('on');$('b-work').textContent='💼 Я работаю';
+  setEmo('happy');say('Рабочий режим выключен',2500)}
+let alarmInt;
+function stopAlarmSound(){clearInterval(alarmInt)}
+function startAlarm(){alarm=true;root.classList.add('alarm');setEmo('surprised',true);
+  say('Абдулла! Ты сидишь уже '+workMin+' мин. Встань и разомнись! Тапни меня',0,true);
+  SND.alarm();stopAlarmSound();alarmInt=setInterval(()=>{if(alarm){SND.alarm();setEmo(emo==='happy'?'surprised':'happy',true)}},1800)}
+function stopAlarm(){alarm=false;stopAlarmSound();root.classList.remove('alarm');workStart=Date.now();
+  setEmo('love');say('Молодец! Отдохни минутку 💗',4000,true);setTimeout(()=>{if(working&&emo==='love')setEmo('focus',true)},4000)}
+const BORED=['Мне скучно… поиграй со мной!','Эй! Я тут!','А что ты делаешь?','Погладь меня 🙂','Би-бип!'];
 
-// UI fades after a few seconds; any touch brings it back
-let uiT;function wake(){bar.classList.remove('hide');clearTimeout(uiT);uiT=setTimeout(()=>{bar.classList.add('hide');hint.style.opacity=0},4000)}
-wake();
+setInterval(()=>{const now=Date.now(),h=new Date().getHours(),night=h>=23||h<7;
+  if($('b-quiet').classList.contains('on')&&!quiet()){$('b-quiet').classList.remove('on');if(emo==='shy')setEmo('normal',true)}
+  if(emo==='hurt'&&!hurt())forgive('Ладно, я больше не обижаюсь');
+  if(working&&!alarm&&now-workStart>=workMin*60000){if(hurt())return;startAlarm();return}
+  if(alarm||hurt()||working)return;
+  if(night&&emo!=='sleep'&&now-lastInput>60000){setEmo('sleep');return}
+  if(!night&&emo==='sleep'&&!manualSleep){setEmo('normal');return}
+  if(emo==='normal'&&!quiet()&&now-lastInput>20000&&Math.random()<.35){
+    setEmo('happy',true);SND.bored();say(BORED[Math.floor(Math.random()*BORED.length)],3500);
+    lastInput=now;setTimeout(()=>emo==='happy'&&setEmo('normal',true),3000)}
+},1000);
 
-// night mode: 23:00–07:00 robot sleeps; random little emotions in the day
-setInterval(()=>{const h=new Date().getHours(),night=h>=23||h<7;
-  if(night&&emo!=='sleep'&&Date.now()-lastInput>60000)setEmo('sleep');
-  else if(!night&&emo==='sleep'&&!manualSleep)setEmo('normal');
-  else if(!night&&emo==='normal'&&Date.now()-lastInput>8000&&Math.random()<.15){setEmo('happy');setTimeout(()=>emo==='happy'&&setEmo('normal'),2500)}
-},5000);
+/* ---------- buttons ---------- */
+const MINS=[25,50,1];
+$('b-work').onclick=()=>{audio();working?stopWork():startWork()};
+$('b-min').onclick=()=>{workMin=MINS[(MINS.indexOf(workMin)+1)%MINS.length];$('b-min').textContent='⏱ '+workMin+' мин';
+  if(working){workStart=Date.now();say('Позову через '+workMin+' мин',2500)}};
+$('b-quiet').onclick=()=>{audio();setQuiet(!quiet())};
+$('b-yell').onclick=()=>{audio();yell()};
+$('b-sleep').onclick=()=>{manualSleep=emo!=='sleep';$('b-sleep').classList.toggle('on',manualSleep);
+  if(manualSleep){alarm=false;root.classList.remove('alarm');setEmo('sleep');say('',0)}else setEmo('normal')};
+$('b-full').onclick=()=>{const d=document.documentElement;(d.requestFullscreen?d.requestFullscreen():Promise.reject()).catch(()=>{})};
 
-// keep screen on if allowed
+let uiT;function wake(){bar.classList.remove('hide');clearTimeout(uiT);uiT=setTimeout(()=>bar.classList.add('hide'),6000)}
+bar.addEventListener('pointerdown',wake);wake();
+setTimeout(()=>{if(sayT.textContent.startsWith('Привет'))sayT.textContent=''},6000);
+
+/* ---------- voice (only where the browser allows it) ---------- */
+function heard(text){const s=text.toLowerCase();lastInput=Date.now();
+  if(/тихо|тише|молчи|замолчи|не шуми/.test(s)){if(!quiet())setQuiet(true);return}
+  if(/дурак|плохой|отстань|надоел|заткнись/.test(s)){yell();return}
+  if(/прости|извини|хороший|молодец|люблю/.test(s)){forgive('И я тебя люблю 💗');return}
+  if(/привет|здравствуй/.test(s)){setEmo('happy');say('Привет, Абдулла!',3000,true);return}
+  if(/спать|спи|спокойной/.test(s)){manualSleep=true;$('b-sleep').classList.add('on');setEmo('sleep');return}
+  if(/проснись|подъ[её]м|вставай/.test(s)){manualSleep=false;$('b-sleep').classList.remove('on');setEmo('surprised');return}
+  if(/работа/.test(s)){if(!working)startWork();return}}
+(async()=>{
+  if(!window.claude||!window.claude.use)return;
+  try{tts=await window.claude.use('tts')}catch(e){}
+  let d=null;try{d=await window.claude.use('dictation')}catch(e){}
+  if(!d)return;
+  const b=$('b-mic');b.hidden=false;let on=false;
+  d.onFinal(({text})=>heard(text));
+  d.onState(({state})=>{on=state==='listening';b.classList.toggle('on',on);b.textContent=on?'🎤 Слушаю…':'🎤 Слушай'});
+  b.onclick=()=>{if(on){d.stop().catch(()=>{})}else{d.start().catch(e=>{if(e&&e.code==='not_granted')b.hidden=true})}};
+})();
+
 (async()=>{try{await navigator.wakeLock?.request('screen')}catch(e){}})();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)navigator.wakeLock?.request('screen').catch(()=>{})});
-setEmo('normal');
 </script>
 </body>
 </html>
