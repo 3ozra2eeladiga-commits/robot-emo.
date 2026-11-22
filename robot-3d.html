@@ -164,9 +164,9 @@ function drawEyes(t,dt){
 
 // ---- camera orbit
 let th=.7,ph=1.12,dist=52,target=new THREE.Vector3(0,7,0);
-function placeCam(){const p=robot.position;
+function placeCam(){const p=robot.position,dist0=dist;dist=dist0*(1+.55*explode);
   cam.position.set(p.x+target.x+dist*Math.sin(ph)*Math.sin(th),target.y+dist*Math.cos(ph),p.z+target.z+dist*Math.sin(ph)*Math.cos(th));
-  cam.lookAt(p.x+target.x,target.y,p.z+target.z)}
+  cam.lookAt(p.x+target.x,target.y,p.z+target.z);dist=dist0}
 const ptrs=new Map();let moved=0,pinch=0,userTouched=false;
 canvas.addEventListener('pointerdown',e=>{try{canvas.setPointerCapture(e.pointerId)}catch(_){ }ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved=0;userTouched=true;
   if(ptrs.size===2){const a=[...ptrs.values()];pinch=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])}});
