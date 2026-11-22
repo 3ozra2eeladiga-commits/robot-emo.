@@ -96,6 +96,8 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 #start button{font:800 20px var(--font);color:var(--bg);background:var(--eye);border:0;border-radius:999px;padding:16px 28px}
 #start p{margin:0;max-width:340px;font:600 15px/1.4 var(--font)}
 #status{position:fixed;left:0;right:0;top:calc(72px + env(safe-area-inset-top,0px));text-align:center;font:700 13px var(--font);opacity:.6;pointer-events:none}
+#ear{position:fixed;left:0;right:0;top:calc(92px + env(safe-area-inset-top,0px));text-align:center;font:700 13px var(--font);opacity:.6;pointer-events:none;padding:0 16px}
+@media (orientation:landscape){#ear{top:calc(74px + env(safe-area-inset-top,0px))}}
 #cam{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span,.alarm #face{animation:none}}
 </style>
@@ -110,6 +112,7 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 </div>
 <div id="say"><span id="say-t">Привет! Тапни меня — я поменяю настроение</span></div>
 <div id="status"></div>
+<div id="ear"></div>
 <video id="cam" playsinline muted></video>
 <div id="start" hidden><button id="b-start">▶️ Включить робота</button><p>Робот попросит камеру и микрофон, чтобы видеть и слышать тебя. Нажми «Разрешить».</p></div>
 <div id="teach" hidden><div class="in">
@@ -125,6 +128,7 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
   <ul id="t-list"></ul>
   <label for="t-say">Написать роботу (если голос не работает)</label>
   <div class="row"><input id="t-say" maxlength="80" placeholder="например: привет" autocomplete="off"><button id="t-send">➤</button></div>
+  <button id="t-voice" class="ghost"></button>
   <button id="t-close" class="ghost">Закрыть</button>
 </div></div>
 <div id="bar">
@@ -194,6 +198,20 @@ function chirp(notes,type){ // notes: [[fromHz,toHz,seconds],...]
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.2,t+.025);g.gain.exponentialRampToValueAtTime(.0001,t+n[2]);
     g.connect(ac.destination);lfo.start(t);lfo.stop(t+n[2]+.03);t+=n[2]+.05;total+=n[2]+.05});
   selfSound=Math.max(selfSound,Date.now()+total*1000+500);}
+function babble(text){ // the robot's own squeaky language: one little note per syllable
+  if(!ac||quiet()||emo==='sleep')return;
+  const n=Math.min(14,Math.max(2,(text.match(/[аеёиоуыэюяaeiou]/gi)||[]).length)),ask=/\?/.test(text),wow=/!/.test(text);
+  let t=ac.currentTime+.03;const t0=t;
+  const out=ac.createGain(),lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3200;out.gain.value=.9;out.connect(lp).connect(ac.destination);
+  for(let i=0;i<n;i++){const ch=text.charCodeAt((i*3+1)%text.length)||77;
+    let f=(wow?640:560)+(ch%9)*48;if(ask&&i>=n-2)f*=1.18+.12*(i-(n-2));
+    const dur=.06+(ch%3)*.022,bend=ch%2?1.22:.84,g=ac.createGain();
+    [[1,'triangle',1],[2,'sine',.28]].forEach(v=>{const o=ac.createOscillator(),og=ac.createGain();o.type=v[1];og.gain.value=v[2];
+      o.frequency.setValueAtTime(f*v[0],t);o.frequency.exponentialRampToValueAtTime(f*bend*v[0],t+dur);
+      o.connect(og).connect(g);o.start(t);o.stop(t+dur+.03)});
+    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.2,t+.012);g.gain.exponentialRampToValueAtTime(.0001,t+dur+.02);
+    g.connect(out);t+=dur+.035+((i+1)%4===0?.09:0)}
+  selfSound=Math.max(selfSound,Date.now()+(t-t0)*1000+500);}
 const SND={
   happy:()=>chirp([[700,1100,.1],[900,1500,.12]]),
   surprised:()=>chirp([[500,1600,.18]]),
@@ -214,10 +232,11 @@ let sayTimer;
 function say(text,ms,speak){sayT.textContent=text;clearTimeout(sayTimer);
   if(ms)sayTimer=setTimeout(()=>{sayT.textContent=''},ms);
   if(!speak||quiet())return;
+  if(mem.voice!=='words'){babble(text);return}
   if(tts){tts.speak(text,{language:'ru',voice:'airy'}).catch(()=>{});return}
   if(voiceOn&&window.speechSynthesis){try{const u=new SpeechSynthesisUtterance(text.replace(/[^\p{L}\p{N}\p{P}\s]/gu,''));
-    u.lang='ru-RU';u.pitch=1.9;u.rate=1.1;selfSound=Math.max(selfSound,Date.now()+text.length*95+900);
-    speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}}
+    u.lang='ru-RU';u.pitch=1.5;u.rate=1.05;selfSound=Math.max(selfSound,Date.now()+text.length*95+900);
+    speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}else babble(text)}
 
 /* ---------- face ---------- */
 function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
@@ -285,6 +304,8 @@ setInterval(()=>{const now=Date.now(),h=new Date().getHours(),night=h>=23||h<7;
 
 /* ---------- buttons ---------- */
 $('b-teach').onclick=()=>{audio();paintTeach();$('teach').hidden=false;bar.classList.add('hide')};
+const paintVoice=()=>{$('t-voice').textContent=mem.voice==='words'?'Голос: говорит словами (нажми — будет пищать)':'Голос: пищит по-своему (нажми — будет говорить словами)'};
+paintVoice();$('t-voice').onclick=()=>{audio();voiceOn=true;mem.voice=mem.voice==='words'?'':'words';save();paintVoice();say('Вот так я теперь говорю!',3000,true)};
 $('t-close').onclick=()=>{$('teach').hidden=true;wake()};
 $('t-name').onchange=()=>{const v=$('t-name').value.trim();if(v){mem.name=v;save();say('Запомнил! Ты — '+v,3000,true)}};
 $('t-add').onclick=()=>{addPair($('t-q').value,$('t-a').value);if($('t-q').value.trim()&&$('t-a').value.trim()){$('t-q').value='';$('t-a').value=''}};
@@ -317,7 +338,17 @@ function heard(text){const s=text.toLowerCase().trim().replace(/[.!?]+$/,'');las
   if(/как дела|как ты/.test(s)){setEmo('happy');say('У меня всё супер! А у тебя?',3500,true);return}
   if(/кто ты|как тебя зовут/.test(s)){setEmo('happy');say('Я твой робот-помощник!',3500,true);return}
   if(/иди ко мне|ко мне|сюда/.test(s)){setEmo('happy');say('Бегу! Ой… у меня пока нет колёс',4000,true);return}
-  SND.ok();}
+  if(/спасибо|благодарю/.test(s)){setEmo('love');say('Пожалуйста! 💗',3000,true);return}
+  if(/пока|до свидания|до встречи/.test(s)){setEmo('sad',true);say('Пока… Возвращайся скорее!',3500,true);return}
+  if(/что (ты )?делаешь|чем занят/.test(s)){setEmo('happy');say('Смотрю на тебя и жду, когда поиграем!',4000,true);return}
+  if(/сколько врем|который час/.test(s)){const d=new Date();setEmo('happy',true);say('Сейчас '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'),4000,true);return}
+  if(/милый|милаш|красив|умни|классный|крутой/.test(s)){mem.pats++;if(!grow()){setEmo('love');say('Ой, спасибо! Я стесняюсь 💗',3500,true)}return}
+  if(/спой|песн/.test(s)){setEmo('happy',true);say('Ля-ля-ля! Ла-ла-ла! Ту-ру-ру!',4000);chirp([[523,523,.2],[659,659,.2],[784,784,.2],[659,659,.2],[523,523,.2],[784,1046,.4]]);return}
+  if(/шутк|анекдот|рассмеши/.test(s)){setEmo('happy');say('Почему робот не боится дождя? Потому что он — я, а я сижу дома!',6000,true);return}
+  if(/потанцуй|танц/.test(s)){setEmo('happy',true);SND.love();root.classList.add('alarm');say('Смотри, как я умею!',3000);setTimeout(()=>{if(!alarm)root.classList.remove('alarm')},3000);return}
+  if(/скучн|грустн|устал/.test(s)){setEmo('sad',true);say('Я рядом. Хочешь, спою? Скажи «спой»',4500,true);return}
+  const DUNNO=['Хм? Я пока не знаю таких слов. Научи меня — кнопка 🎓','Би-бу? Не понял, но я стараюсь!','Ой, это я ещё не выучил'];
+  setEmo('surprised',true);say(DUNNO[Math.floor(Math.random()*DUNNO.length)],4000,true);setTimeout(()=>emo==='surprised'&&setEmo('normal',true),2500);}
 
 /* ---------- real senses: camera and microphone (when the page is opened as a normal site) ---------- */
 const standalone=!window.claude&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
@@ -327,7 +358,9 @@ if(standalone)$('start').hidden=false;
 $('b-start').onclick=async()=>{$('start').hidden=true;audio();voiceOn=true;
   try{speechSynthesis.speak(new SpeechSynthesisUtterance(''))}catch(e){}
   let stream=null;const md=navigator.mediaDevices;
-  try{stream=await md.getUserMedia({video:{facingMode:'user',width:{ideal:320},height:{ideal:240}},audio:{echoCancellation:true,noiseSuppression:true}})}
+  const hasSR=!!(window.SpeechRecognition||window.webkitSpeechRecognition),ios=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  const au=(ios&&hasSR)?false:{echoCancellation:true,noiseSuppression:true};
+  try{stream=await md.getUserMedia({video:{facingMode:'user',width:{ideal:320},height:{ideal:240}},audio:au})}
   catch(e){try{stream=await md.getUserMedia({video:{facingMode:'user'}})}catch(e2){}}
   if(!stream){say('Нет доступа к камере и микрофону. Я не вижу и не слышу',7000);return}
   setEmo('happy',true);SND.hello();say('Привет! Я включился',3000,true);
@@ -368,12 +401,19 @@ async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(st
         setTimeout(()=>emo==='sad'&&setEmo('normal',true),4000)}}
   },160);}
 
-function startSpeechRec(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;
-  const r=new SR(),b=$('b-mic');let want=true;r.lang='ru-RU';r.continuous=true;r.interimResults=false;
-  const paint=()=>{b.classList.toggle('on',want);b.textContent=want?'🎤 Слушаю…':'🎤 Слушай'};
-  r.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal&&Date.now()>selfSound)heard(e.results[i][0].transcript)};
-  r.onend=()=>{if(want)setTimeout(()=>{try{r.start()}catch(e){}},700)};
-  r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){want=false;paint()}};
+const ear=t=>{$('ear').textContent=t};
+function startSpeechRec(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,b=$('b-mic');
+  if(!SR){ear('👂 в этом браузере я не понимаю слова — открой меня в Safari');return}
+  const r=new SR();let want=true,timer=null,lastText='',lastAt=0;r.lang='ru-RU';r.continuous=true;r.interimResults=true;
+  const paint=()=>{b.classList.toggle('on',want);b.textContent=want?'🎤 Слушаю…':'🎤 Слушай';ear(want?'👂 слушаю…':'👂 не слушаю')};
+  const take=(text,final)=>{text=text.trim();if(!text)return;const now=Date.now();
+    if(text===lastText&&now-lastAt<4000)return;lastText=text;lastAt=now;
+    ear('👂 услышал: «'+text+'»');if(now>selfSound)heard(text);
+    if(!final){try{r.abort()}catch(e){}}};
+  r.onresult=e=>{const res=e.results[e.results.length-1],text=res[0].transcript;clearTimeout(timer);
+    if(res.isFinal)take(text,true);else{ear('👂 '+text+'…');timer=setTimeout(()=>take(text,false),1300)}};
+  r.onend=()=>{if(want)setTimeout(()=>{try{r.start()}catch(e){}},500)};
+  r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){want=false;paint();ear('👂 микрофон запрещён — разреши его в настройках сайта')}};
   b.hidden=false;paint();b.onclick=()=>{want=!want;paint();try{want?r.start():r.stop()}catch(e){}};
   try{r.start()}catch(e){}}
 (async()=>{
