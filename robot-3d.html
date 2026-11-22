@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body style="margin:0">
+<title>Робот в 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: full-screen 3D workshop, info card and three buttons docked at the bottom */
+:root{
+  --bg:#070a0f; --panel:rgba(16,22,30,.92); --line:#243342; --fg:#e6f1f7; --dim:#93a7b5;
+  --eye:#5ef2ff; --warn:#ffd166;
+  --font:"Nunito",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--font);
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+body{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#top{position:fixed;left:0;right:0;top:calc(10px + env(safe-area-inset-top,0px));text-align:center;pointer-events:none;
+  font:700 14px var(--font);color:var(--dim);padding:0 16px}
+#dock{position:fixed;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:10px;
+  padding:0 max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
+  pointer-events:none}
+#card{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;
+  max-width:520px;width:100%;margin:0 auto;box-sizing:border-box;backdrop-filter:blur(8px)}
+#card h2{margin:0 0 4px;font:800 17px var(--font);color:var(--eye);text-wrap:balance}
+#card p{margin:0;font:600 14px/1.4 var(--font);color:var(--fg)}
+#card .price{margin-top:6px;color:var(--warn);font-weight:800;font-size:14px}
+#btns{pointer-events:auto;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#btns button{font:800 15px var(--font);color:var(--fg);background:var(--panel);border:1px solid var(--line);
+  border-radius:999px;padding:11px 16px;min-width:0}
+#btns button.on{background:var(--eye);color:#04222a;border-color:var(--eye)}
+#btns button:focus-visible{outline:2px solid var(--eye);outline-offset:2px}
+#err[hidden]{display:none}
+#err{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font:700 16px var(--font)}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
+
+<canvas id="gl"></canvas>
+<div id="top">Крути пальцем · двумя пальцами — ближе/дальше · нажми на деталь</div>
+<div id="dock">
+  <div id="card"><h2 id="c-title">Твой робот</h2><p id="c-text">Телефон — это голова с глазами и мозгом. Снизу тележка с двумя моторами. Нажми на любую деталь, и я расскажу, что это.</p><div class="price" id="c-price">Все детали без телефона: примерно 1 900–3 100 ₽</div></div>
+  <div id="btns">
+    <button id="b-explode">🔧 Разобрать</button>
+    <button id="b-drive">▶️ Поехать</button>
+    <button id="b-how">⚡ Как работает</button>
+  </div>
+</div>
+<div id="err" hidden>Не получилось показать 3D. Обнови страницу или открой в другом браузере.</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+if(!window.THREE){document.getElementById('err').hidden=false;return}
+const $=id=>document.getElementById(id);
+const PARTS={
+  phone:{t:'Телефон — голова и мозг',d:'Любой старый Android. На экране глаза. Микрофон слышит тебя, камера видит, динамик отвечает. Он же думает и командует колёсами.',p:'0 ₽, если есть старый'},
+  holder:{t:'Держатель телефона',d:'Обычный держатель на стойке. Крепится к платформе винтом или двусторонним скотчем и держит телефон экраном вперёд.',p:'≈ 200–300 ₽'},
+  esp:{t:'ESP32 — «спинной мозг»',d:'Маленькая плата с Bluetooth и Wi-Fi. Получает от телефона команды «вперёд», «влево», «стоп» и передаёт их драйверу моторов.',p:'≈ 350–500 ₽'},
+  driver:{t:'Драйвер моторов',d:'Плата-усилитель. ESP32 слабая и сама моторы не раскрутит, поэтому драйвер даёт им ток от батареи.',p:'≈ 150–250 ₽'},
+  battery:{t:'Батарея',d:'Два аккумулятора 18650 в держателе. Питают моторы и ESP32. Хватает примерно на 1–2 часа езды.',p:'≈ 400–600 ₽'},
+  motor:{t:'Мотор с редуктором',d:'Жёлтый моторчик TT. Их два: левый и правый. Крутятся оба — робот едет прямо. Один быстрее — робот поворачивает.',p:'≈ 250–400 ₽ за пару с колёсами'},
+  wheel:{t:'Колесо',d:'Надевается прямо на ось мотора. Обычно продаётся в комплекте с мотором.',p:'в комплекте с моторами'},
+  caster:{t:'Опорный шарик',d:'Третья точка опоры сзади. Катится в любую сторону и не мешает поворачивать.',p:'≈ 50–100 ₽'},
+  chassis:{t:'Платформа',d:'Пластина, на которой всё держится. Можно купить готовую «2WD шасси» или вырезать из фанеры или пластика.',p:'≈ 300–500 ₽'},
+  wires:{t:'Провода',d:'Соединяют батарею, драйвер, ESP32 и моторы. Нужны провода «папа-мама» и «мама-мама», паять почти не придётся.',p:'≈ 150 ₽'}
+};
+const HOW=[
+  ['phone','1. Телефон слышит тебя','Ты говоришь: «Иди ко мне». Телефон понимает слова и решает, что делать.'],
+  ['esp','2. Команда летит по Bluetooth','Телефон без проводов отправляет плате ESP32 короткую команду: «вперёд».'],
+  ['driver','3. ESP32 включает драйвер','Плата подаёт сигнал драйверу: какой мотор крутить и с какой скоростью.'],
+  ['battery','4. Батарея даёт силу','Драйвер берёт ток от батареи и пускает его в моторы.'],
+  ['motor','5. Моторы крутят колёса','Робот едет. Глаза на экране в это время радуются.']
+];
+
+const canvas=$('gl');
+let renderer;
+try{renderer=new THREE.WebGLRenderer({canvas,antialias:true})}catch(e){$('err').hidden=false;return}
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x070a0f);scene.fog=new THREE.Fog(0x070a0f,70,150);
+const cam=new THREE.PerspectiveCamera(45,1,0.5,400);
+scene.add(new THREE.HemisphereLight(0xcfe8ff,0x1a2028,.95));
+const sun=new THREE.DirectionalLight(0xffffff,.9);sun.position.set(20,40,25);scene.add(sun);
+const grid=new THREE.GridHelper(240,48,0x1d3140,0x121c26);scene.add(grid);
+
+const robot=new THREE.Group();scene.add(robot);
+const items=[];   // {mesh, home:Vector3, off:Vector3, key}
+const mats={};
+function mat(c,o){return new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.6,metalness:.1},o||{}))}
+function add(key,geo,m,pos,off,rot){
+  const mesh=new THREE.Mesh(geo,m);mesh.position.set(pos[0],pos[1],pos[2]);
+  if(rot)mesh.rotation.set(rot[0],rot[1],rot[2]);
+  mesh.userData.key=key;robot.add(mesh);
+  items.push({mesh,key,home:mesh.position.clone(),off:new THREE.Vector3(off[0],off[1],off[2])});
+  return mesh;}
+const B=(x,y,z)=>new THREE.BoxGeometry(x,y,z),C=(r,h,s)=>new THREE.CylinderGeometry(r,r,h,s||28);
+
+// platform
+add('chassis',B(12,.5,17),mat(0x2b3440),[0,3.6,0],[0,0,0]);
+// motors + wheels
+const wheels=[];
+[-1,1].forEach(s=>{
+  add('motor',B(2,2.2,6.5),mat(0xf2c230),[s*4.4,2.2,2.5],[s*3,-6,0]);
+  const w=new THREE.Group();
+  const tire=new THREE.Mesh(C(3.3,2.6,36),mat(0x15181c,{roughness:.9}));tire.rotation.z=Math.PI/2;tire.userData.key='wheel';
+  const hub=new THREE.Mesh(C(2.1,2.7,6),mat(0xf2c230));hub.rotation.z=Math.PI/2;hub.userData.key='wheel';
+  w.add(tire,hub);w.position.set(s*7.4,3.3,2.5);w.userData.key='wheel';robot.add(w);wheels.push(w);
+  items.push({mesh:w,key:'wheel',home:w.position.clone(),off:new THREE.Vector3(s*9,-3,0)});
+});
+// caster
+add('caster',new THREE.SphereGeometry(1.1,24,16),mat(0xc9d2d9,{metalness:.7,roughness:.3}),[0,1.1,-6.5],[0,-6,-4]);
+add('caster',C(.9,1.2),mat(0x555f6a),[0,2.75,-6.5],[0,-4.5,-4]);
+// battery
+add('battery',B(4.4,2,8),mat(0x14171b),[0,4.9,-4],[0,7,-12]);
+[-1,1].forEach(s=>add('battery',C(.92,6.6),mat(0x2f8f5b),[s*1.05,5.5,-4],[0,7,-12],[Math.PI/2,0,0]));
+// ESP32
+add('esp',B(2.9,.25,5.6),mat(0x16233f),[-3.6,4,4.6],[-10,8,6]);
+add('esp',B(1.9,.35,2.2),mat(0xb9c2ca,{metalness:.8,roughness:.3}),[-3.6,4.3,6],[-10,8,6]);
+// driver
+add('driver',B(3.6,.25,3.6),mat(0xb3272d),[3.4,4,4.8],[10,8,6]);
+add('driver',B(1.4,1.2,1.4),mat(0x1b1e22),[3.4,4.7,4.8],[10,8,6]);
+// wires (simple arcs)
+function wire(a,b,color){
+  const mid=new THREE.Vector3((a[0]+b[0])/2,Math.max(a[1],b[1])+1.6,(a[2]+b[2])/2);
+  const curve=new THREE.QuadraticBezierCurve3(new THREE.Vector3(...a),mid,new THREE.Vector3(...b));
+  const m=new THREE.Mesh(new THREE.TubeGeometry(curve,16,.13,6),mat(color));m.userData.key='wires';robot.add(m);
+  items.push({mesh:m,key:'wires',home:m.position.clone(),off:new THREE.Vector3(0,0,0),wire:true});}
+wire([-3.6,4.2,3.4],[3.4,4.2,3.6],0xffd166);
+wire([0,5.9,-1],[3.4,4.6,3.4],0xe5484d);
+wire([3.4,4.2,6],[4.4,3.2,5],0x3ddc97);
+wire([2,4.2,4.8],[-4.4,3.2,5],0x3ddc97);
+// holder + phone
+add('holder',C(.45,7.2),mat(0x4a5560,{metalness:.4}),[0,7.4,-.6],[0,5,-5]);
+add('holder',B(7,3.2,.8),mat(0x3a444e),[0,11.6,-.9],[0,5,-5],[-.14,0,0]);
+const phone=new THREE.Group();phone.userData.key='phone';
+const body=new THREE.Mesh(B(15.4,7.4,.8),mat(0x0c0e11,{roughness:.35,metalness:.5}));body.userData.key='phone';
+const eyeCv=document.createElement('canvas');eyeCv.width=512;eyeCv.height=240;const ex=eyeCv.getContext('2d');
+const eyeTex=new THREE.CanvasTexture(eyeCv);
+const screen=new THREE.Mesh(new THREE.PlaneGeometry(14.4,6.6),new THREE.MeshBasicMaterial({map:eyeTex}));
+screen.position.z=.41;screen.userData.key='phone';
+phone.add(body,screen);phone.position.set(0,12.2,-.1);phone.rotation.x=-.14;robot.add(phone);
+items.push({mesh:phone,key:'phone',home:phone.position.clone(),off:new THREE.Vector3(0,9,3)});
+
+// Bluetooth pulse (phone -> ESP32)
+const pulse=new THREE.Mesh(new THREE.SphereGeometry(.45,12,10),new THREE.MeshBasicMaterial({color:0x5ef2ff}));
+pulse.visible=false;robot.add(pulse);
+
+// ---- eyes on the phone screen
+let mood='normal',blinkT=0,nextBlink=2;
+function rr(x,y,w,h,r){ex.beginPath();ex.moveTo(x+r,y);ex.arcTo(x+w,y,x+w,y+h,r);ex.arcTo(x+w,y+h,x,y+h,r);ex.arcTo(x,y+h,x,y,r);ex.arcTo(x,y,x+w,y,r);ex.fill()}
+function drawEyes(t,dt){
+  nextBlink-=dt;if(nextBlink<0){blinkT=.16;nextBlink=2+Math.random()*3}
+  blinkT=Math.max(0,blinkT-dt);
+  const open=blinkT>0?.12:1, gx=Math.sin(t*.7)*14;
+  ex.fillStyle='#05070a';ex.fillRect(0,0,512,240);
+  ex.fillStyle='#5ef2ff';ex.shadowColor='#5ef2ff';ex.shadowBlur=26;
+  [150,362].forEach(cx=>{const w=92,h=124*open;rr(cx-w/2+gx,120-h/2,w,h,Math.min(30,h/2))});
+  ex.shadowBlur=0;
+  if(mood==='happy'&&open===1){ex.fillStyle='#05070a';[150,362].forEach(cx=>{ex.beginPath();ex.ellipse(cx+gx,200,70,72,0,0,7);ex.fill()})}
+  eyeTex.needsUpdate=true;}
+
+// ---- camera orbit
+let th=.7,ph=1.12,dist=52,target=new THREE.Vector3(0,7,0);
+function placeCam(){const p=robot.position;
+  cam.position.set(p.x+target.x+dist*Math.sin(ph)*Math.sin(th),target.y+dist*Math.cos(ph),p.z+target.z+dist*Math.sin(ph)*Math.cos(th));
+  cam.lookAt(p.x+target.x,target.y,p.z+target.z)}
+const ptrs=new Map();let moved=0,pinch=0,userTouched=false;
+canvas.addEventListener('pointerdown',e=>{try{canvas.setPointerCapture(e.pointerId)}catch(_){ }ptrs.set(e.pointerId,[e.clientX,e.clientY]);moved=0;userTouched=true;
+  if(ptrs.size===2){const a=[...ptrs.values()];pinch=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])}});
+canvas.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;
+  const dx=e.clientX-p[0],dy=e.clientY-p[1];ptrs.set(e.pointerId,[e.clientX,e.clientY]);
+  if(ptrs.size===1){th-=dx*.008;ph=Math.max(.25,Math.min(1.5,ph-dy*.006));moved+=Math.abs(dx)+Math.abs(dy)}
+  else if(ptrs.size===2){const a=[...ptrs.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);
+    if(pinch)dist=Math.max(24,Math.min(110,dist*pinch/d));pinch=d;moved+=10}});
+function up(e){const was=ptrs.size;ptrs.delete(e.pointerId);if(was===1&&moved<8)pick(e.clientX,e.clientY)}
+canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
+canvas.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(24,Math.min(110,dist*(1+e.deltaY*.001)))},{passive:false});
+
+// ---- picking & highlight
+const ray=new THREE.Raycaster(),v2=new THREE.Vector2();let glowKey=null;
+function setGlow(key){glowKey=key}
+function eachMesh(fn){robot.traverse(o=>{if(o.isMesh&&o.material&&o.material.emissive)fn(o)})}
+function keyOf(o){while(o){if(o.userData&&o.userData.key)return o.userData.key;o=o.parent}return null}
+function show(key){const p=PARTS[key];if(!p)return;$('c-title').textContent=p.t;$('c-text').textContent=p.d;$('c-price').textContent=p.p;setGlow(key)}
+function pick(x,y){v2.set(x/innerWidth*2-1,-(y/innerHeight)*2+1);ray.setFromCamera(v2,cam);
+  const hit=ray.intersectObjects(robot.children,true).find(h=>h.object!==pulse);
+  if(hit){stopHow();show(keyOf(hit.object))}}
+
+// ---- modes
+let explode=0,explodeTo=0,driving=false,how=-1,howT=0,heading=0;
+function btn(id,on){$(id).classList.toggle('on',on)}
+$('b-explode').onclick=()=>{explodeTo=explodeTo?0:1;btn('b-explode',!!explodeTo);
+  $('b-explode').textContent=explodeTo?'🧩 Собрать':'🔧 Разобрать';
+  if(explodeTo){driving=false;btn('b-drive',false);$('b-drive').textContent='▶️ Поехать'}};
+$('b-drive').onclick=()=>{driving=!driving;btn('b-drive',driving);$('b-drive').textContent=driving?'⏸ Стоп':'▶️ Поехать';
+  mood=driving?'happy':'normal';
+  if(driving){explodeTo=0;btn('b-explode',false);$('b-explode').textContent='🔧 Разобрать'}};
+function stopHow(){if(how<0)return;how=-1;btn('b-how',false);pulse.visible=false}
+function howStep(i){how=i;howT=0;const s=HOW[i];$('c-title').textContent=s[1];$('c-text').textContent=s[2];$('c-price').textContent='Шаг '+(i+1)+' из '+HOW.length;setGlow(s[0])}
+$('b-how').onclick=()=>{if(how>=0){stopHow();setGlow(null);return}btn('b-how',true);howStep(0)};
+
+// ---- loop
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();
+  target.y=h>w?4:7; if(!userTouched)dist=h>w?62:48}
+addEventListener('resize',resize);resize();
+const clock=new THREE.Clock();const tmp=new THREE.Vector3();
+function frame(){
+  const dt=Math.min(clock.getDelta(),.05),t=clock.elapsedTime;
+  explode+=(explodeTo-explode)*Math.min(1,dt*5);
+  items.forEach(it=>{if(it.wire){it.mesh.visible=explode<.15;return}
+    it.mesh.position.copy(it.home).addScaledVector(it.off,explode)});
+  if(driving){const sp=9;heading+=dt*.45;robot.rotation.y=heading;
+    robot.position.x+=Math.sin(heading)*sp*dt;robot.position.z+=Math.cos(heading)*sp*dt;
+    wheels[0].rotation.x+=dt*sp/3.3*.8;wheels[1].rotation.x+=dt*sp/3.3*1.2}
+  if(how>=0){howT+=dt;
+    if(how===1){pulse.visible=true;const k=(howT*1.2)%1;tmp.set(0,12.2,0).lerp(new THREE.Vector3(-3.6,4.6,5),k);pulse.position.copy(tmp)}else pulse.visible=false;
+    if(how===4){wheels.forEach(w=>w.rotation.x+=dt*3)}
+    if(howT>4.2)howStep((how+1)%HOW.length)}
+  const g=.35+.3*Math.sin(t*5);
+  eachMesh(o=>{const on=glowKey&&keyOf(o)===glowKey;o.material.emissive.setHex(on?0x1fa7b8:0x000000);o.material.emissiveIntensity=on?g:0});
+  if(!userTouched)th+=dt*.15;
+  drawEyes(t,dt);placeCam();renderer.render(scene,cam);requestAnimationFrame(frame)}
+frame();
+})();
+</script>
+</body>
+</html>
