@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body style="margin:0">
+<title>Глаза робота</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one full-screen face, two eyes centred, a control strip that fades away */
+:root{
+  --bg:#05070a; --eye:#5ef2ff; --glow:rgba(94,242,255,.45);
+  --blush:#ff7aa8; --ui:#9fb3c0; --chip:#121820;
+  --font:"Nunito",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--ui);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none}
+body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#face{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:12vmin;cursor:pointer}
+.wrap{transition:transform .35s cubic-bezier(.3,1.4,.5,1)}
+.eye{position:relative;width:24vmin;height:32vmin;background:var(--eye);border-radius:32%;
+  overflow:hidden;box-shadow:0 0 6vmin var(--glow);
+  transition:transform .25s ease,border-radius .3s ease,height .3s ease,width .3s ease}
+.lid{position:absolute;left:-25%;width:150%;height:0;background:var(--bg);transition:height .3s ease,transform .3s ease,border-radius .3s}
+.lid.t{top:-2%;transform-origin:50% 0}
+.lid.b{bottom:-2%;transform-origin:50% 100%}
+.blush{position:absolute;bottom:-9vmin;width:12vmin;height:5vmin;border-radius:50%;background:var(--blush);
+  filter:blur(1.5vmin);opacity:0;transition:opacity .4s}
+.wrap{position:relative;display:flex;justify-content:center}
+.blink .eye{transform:scaleY(.08)!important}
+
+/* emotions */
+.happy .lid.b{height:52%;border-radius:50% 50% 0 0/100% 100% 0 0}
+.happy .blush,.love .blush{opacity:.55}
+.sad .lid.t{height:42%}
+.sad #L .lid.t{transform:rotate(20deg)}
+.sad #R .lid.t{transform:rotate(-20deg)}
+.sad .eye{height:28vmin}
+.angry .lid.t{height:40%}
+.angry #L .lid.t{transform:rotate(-22deg)}
+.angry #R .lid.t{transform:rotate(22deg)}
+.surprised .eye{width:28vmin;height:28vmin;border-radius:50%}
+.love .eye{border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:var(--blush);box-shadow:0 0 6vmin rgba(255,122,168,.5)}
+.sleep .eye{transform:scaleY(.07)}
+.sleep .wrap{transform:translate(0,4vmin)!important}
+
+#zzz{position:fixed;right:18vmin;top:22vh;font:800 7vmin var(--font);color:var(--eye);opacity:0;pointer-events:none}
+.sleep #zzz{opacity:1}
+#zzz span{display:inline-block;animation:z 2.4s infinite ease-in-out}
+#zzz span:nth-child(2){animation-delay:.4s;font-size:.8em}
+#zzz span:nth-child(3){animation-delay:.8s;font-size:.6em}
+@keyframes z{0%{transform:translateY(0);opacity:0}30%{opacity:1}100%{transform:translateY(-6vmin);opacity:0}}
+
+#bar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  transition:opacity .5s}
+#bar.hide{opacity:0;pointer-events:none}
+#bar button{font:700 15px var(--font);color:var(--ui);background:var(--chip);border:1px solid #223040;border-radius:999px;padding:9px 14px}
+#bar button.on{color:var(--bg);background:var(--eye);border-color:var(--eye)}
+#bar button:focus-visible{outline:2px solid var(--eye);outline-offset:2px}
+#hint{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;font:600 14px var(--font);opacity:.7;transition:opacity .6s;pointer-events:none;padding:0 16px}
+@media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span{animation:none}}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
+
+<div id="face" class="normal">
+  <div class="wrap" id="L"><div class="eye"><div class="lid t"></div><div class="lid b"></div></div><div class="blush"></div></div>
+  <div class="wrap" id="R"><div class="eye"><div class="lid t"></div><div class="lid b"></div></div><div class="blush"></div></div>
+  <div id="zzz"><span>Z</span><span>z</span><span>z</span></div>
+</div>
+<div id="hint">Тап — сменить эмоцию · води пальцем — глаза следят</div>
+<div id="bar">
+  <button id="b-normal" data-e="normal">🙂 Обычный</button>
+  <button id="b-happy" data-e="happy">😊 Радость</button>
+  <button id="b-surprised" data-e="surprised">😮 Удивление</button>
+  <button id="b-sad" data-e="sad">😢 Грусть</button>
+  <button id="b-angry" data-e="angry">😠 Сердит</button>
+  <button id="b-love" data-e="love">💗 Любовь</button>
+  <button id="b-sleep" data-e="sleep">😴 Сон</button>
+  <button id="b-full" data-x="full">⛶ Весь экран</button>
+</div>
+
+<script>
+const face=document.getElementById('face'),L=document.getElementById('L'),R=document.getElementById('R'),
+      bar=document.getElementById('bar'),hint=document.getElementById('hint');
+const cycle=['normal','happy','surprised','sad','angry','love','sleep'];
+let emo='normal',touching=false,lastInput=Date.now(),manualSleep=false;
+
+function setEmo(e){emo=e;face.className=e;
+  bar.querySelectorAll('[data-e]').forEach(b=>b.classList.toggle('on',b.dataset.e===e));
+  if(e!=='sleep')look(0,0);}
+function look(x,y){ // x,y in -1..1
+  const dx=x*7,dy=y*6, sq=1-Math.abs(x)*.12;
+  L.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x>0?sq:1})`;
+  R.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x<0?sq:1})`;}
+function blink(){ if(emo==='sleep')return; face.classList.add('blink');
+  setTimeout(()=>face.classList.remove('blink'),140);}
+(function blinkLoop(){setTimeout(()=>{blink(); if(Math.random()<.25)setTimeout(blink,260); blinkLoop();},2200+Math.random()*3500)})();
+// wander gaze when idle
+setInterval(()=>{ if(touching||emo==='sleep')return;
+  if(Date.now()-lastInput<2500)return;
+  Math.random()<.35?look(0,0):look(Math.random()*2-1,(Math.random()*2-1)*.6);},1600);
+
+// touch / mouse tracking
+function pt(ev){const p=ev.touches?ev.touches[0]:ev;return[(p.clientX/innerWidth)*2-1,(p.clientY/innerHeight)*2-1]}
+let downAt=0,moved=false;
+face.addEventListener('pointerdown',ev=>{touching=true;moved=false;downAt=Date.now();wake();const[x,y]=pt(ev);if(emo!=='sleep')look(x,y)});
+face.addEventListener('pointermove',ev=>{if(!touching&&ev.pointerType!=='mouse')return;lastInput=Date.now();moved=true;if(emo!=='sleep'){const[x,y]=pt(ev);look(x,y)}});
+face.addEventListener('pointerup',()=>{touching=false;lastInput=Date.now();
+  if(!moved||Date.now()-downAt<250){ // tap
+    if(emo==='sleep'){manualSleep=false;setEmo('surprised');setTimeout(()=>emo==='surprised'&&setEmo('happy'),1200);}
+    else setEmo(cycle[(cycle.indexOf(emo)+1)%(cycle.length-1)]);}
+});
+// tilt (works where the browser allows motion sensors)
+addEventListener('deviceorientation',e=>{ if(touching||emo==='sleep'||e.gamma==null)return;
+  lastInput=Date.now(); look(Math.max(-1,Math.min(1,e.gamma/30)),Math.max(-1,Math.min(1,(e.beta-45)/30)));});
+
+bar.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;
+  if(b.dataset.x==='full'){const d=document.documentElement;(d.requestFullscreen?d.requestFullscreen():Promise.reject()).catch(()=>{});return}
+  manualSleep=b.dataset.e==='sleep';setEmo(b.dataset.e);});
+
+// UI fades after a few seconds; any touch brings it back
+let uiT;function wake(){bar.classList.remove('hide');clearTimeout(uiT);uiT=setTimeout(()=>{bar.classList.add('hide');hint.style.opacity=0},4000)}
+wake();
+
+// night mode: 23:00–07:00 robot sleeps; random little emotions in the day
+setInterval(()=>{const h=new Date().getHours(),night=h>=23||h<7;
+  if(night&&emo!=='sleep'&&Date.now()-lastInput>60000)setEmo('sleep');
+  else if(!night&&emo==='sleep'&&!manualSleep)setEmo('normal');
+  else if(!night&&emo==='normal'&&Date.now()-lastInput>8000&&Math.random()<.15){setEmo('happy');setTimeout(()=>emo==='happy'&&setEmo('normal'),2500)}
+},5000);
+
+// keep screen on if allowed
+(async()=>{try{await navigator.wakeLock?.request('screen')}catch(e){}})();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)navigator.wakeLock?.request('screen').catch(()=>{})});
+setEmo('normal');
+</script>
+</body>
+</html>
