@@ -66,6 +66,7 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
   padding:10px 16px;font:700 16px/1.35 var(--font);text-align:center;text-wrap:balance;transition:opacity .5s}
 #say span:empty{opacity:0}
 
+#bar{display:none!important}
 #bar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
   padding:12px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   transition:opacity .5s}
@@ -110,11 +111,11 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
   <div id="zzz"><span>Z</span><span>z</span><span>z</span></div>
 </div>
 </div>
-<div id="say"><span id="say-t">Привет! Тапни меня — я поменяю настроение</span></div>
+<div id="say"><span id="say-t"></span></div>
 <div id="status"></div>
 <div id="ear"></div>
 <video id="cam" playsinline muted></video>
-<div id="start" hidden><button id="b-start">▶️ Включить робота</button><p>Робот попросит камеру и микрофон, чтобы видеть и слышать тебя. Нажми «Разрешить».</p></div>
+<div id="start" hidden><button id="b-start">▶️ Включить робота</button><p>Робот попросит камеру и микрофон, чтобы видеть, узнавать и слышать тебя. Нажми «Разрешить». Поверни телефон набок.</p></div>
 <div id="teach" hidden><div class="in">
   <h2>🎓 Чему я научился</h2>
   <p id="t-level"></p>
@@ -253,13 +254,15 @@ setInterval(()=>{if(touching||emo==='sleep'||hurt()||Date.now()-lastInput<2500||
 /* ---------- touch ---------- */
 function pt(ev){return[(ev.clientX/innerWidth)*2-1,(ev.clientY/innerHeight)*2-1]}
 let downAt=0,moved=0,lastX=0;
+let pressT;
 face.addEventListener('pointerdown',ev=>{audio();touching=true;moved=0;downAt=Date.now();lastX=ev.clientX;wake();
+  clearTimeout(pressT);pressT=setTimeout(()=>{if(touching&&moved<15){touching=false;moved=999;paintTeach();$('teach').hidden=false}},900);
   if(emo!=='sleep'&&!hurt()){const[x,y]=pt(ev);look(x,y)}});
 face.addEventListener('pointermove',ev=>{if(!touching&&ev.pointerType!=='mouse')return;lastInput=Date.now();
   if(touching){moved+=Math.abs(ev.clientX-lastX);lastX=ev.clientX}
   if(hurt()){if(touching&&moved>innerWidth*1.2){moved=21;mem.pats++;forgive('Ладно… я тебя прощаю 💗');grow()}return}
   if(emo!=='sleep'){const[x,y]=pt(ev);look(x,y)}});
-face.addEventListener('pointerup',()=>{touching=false;lastInput=Date.now();
+face.addEventListener('pointerup',()=>{clearTimeout(pressT);if(moved===999){moved=0;return}touching=false;lastInput=Date.now();
   if(moved>innerWidth*1.2&&!hurt()&&!alarm&&emo!=='sleep'){mem.pats++;if(!grow()){setEmo('love');say('Мрр… приятно 💗',2500);setTimeout(()=>emo==='love'&&setEmo(working?'focus':'normal',true),2500)}return}
   if(moved>20)return; // it was a stroke, not a tap
   if(alarm){stopAlarm();return}
@@ -327,6 +330,9 @@ setTimeout(()=>{if(sayT.textContent.startsWith('Привет'))sayT.textContent=
 
 /* ---------- voice (only where the browser allows it) ---------- */
 function heard(text){const s=text.toLowerCase().trim().replace(/[.!?]+$/,'');lastInput=Date.now();
+  if(/запомни (мо[её] лицо|меня)|это я\b/.test(s)){if(!faceReady){say('Я ещё учусь видеть, подожди немного',3000,true);return}
+    mem.faces=[];enroll=6;save();return}
+  if(/кто я|ты меня (знаешь|узна)/.test(s)){say(who==='owner'?'Ты — '+mem.name+'! Я тебя узнал 💗':who==='stranger'?'Я тебя не знаю… Скажи «запомни моё лицо»':'Не вижу тебя. Посмотри на меня',4000,true);return}
   if(learn(s))return;
   if(/тихо|тише|молчи|замолчи|не шуми/.test(s)){if(!quiet())setQuiet(true);return}
   if(/дурак|плохой|отстань|надоел|заткнись/.test(s)){yell();return}
@@ -378,6 +384,33 @@ function startEars(stream){if(!ac)return;let an;
     loud=rms>thr?loud+1:0;
     if(loud>=3&&!hurt()){loud=0;yell()}},100);}
 
+/* ---------- recognising the owner's face ---------- */
+let faceReady=false,who='',greetAt=0,enroll=0,lastStranger=0;
+mem.faces=mem.faces||[];
+function greet(w){lastInput=Date.now();
+  if(w==='owner'){setEmo('happy',true);SND.hello();say(mem.name+'! Я тебя узнал!',3500,true)}
+  else if(w==='stranger'){if(Date.now()-lastStranger<30000)return;lastStranger=Date.now();setEmo('surprised',true);SND.where();say('Ой… а ты кто? Я тебя не знаю',4000,true)}
+  else{setEmo('happy',true);SND.hello();say('Привет! Я тебя вижу',3000,true)}
+  setTimeout(()=>{if(emo==='happy'||emo==='surprised')setEmo('normal',true)},3500)}
+function dist(a,b){let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s)}
+function loadScript(src){return new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=no;document.head.appendChild(e)})}
+async function startRecognition(v){const B='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13';
+  try{await loadScript(B+'/dist/face-api.js');const M=B+'/model/';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(M);await faceapi.nets.faceLandmark68Net.loadFromUri(M);await faceapi.nets.faceRecognitionNet.loadFromUri(M);
+  }catch(e){status('👁 вижу, но узнавать пока не умею');return}
+  faceReady=true;if(!mem.faces.length)enroll=6;
+  const opt=new faceapi.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:.5});
+  let busy=false;
+  setInterval(async()=>{if(busy||!seen||v.readyState<2||document.hidden||emo==='sleep')return;busy=true;
+    try{const r=await faceapi.detectSingleFace(v,opt).withFaceLandmarks().withFaceDescriptor();
+      if(r){const d=Array.from(r.descriptor,x=>Math.round(x*1000)/1000);
+        if(enroll>0){if(enroll===6){setEmo('surprised',true);say('Посмотри на меня… запоминаю твоё лицо',4000,true)}
+          mem.faces.push(d);if(mem.faces.length>12)mem.faces.shift();enroll--;save();status('👁 запоминаю лицо… '+(6-enroll)+'/6');
+          if(enroll===0){setEmo('love');say('Запомнил! Теперь я узнаю тебя, '+mem.name+' 💗',4500,true);who='owner';greetAt=0}}
+        else{const best=Math.min(...mem.faces.map(f=>dist(f,d)));
+          const w=best<.5?'owner':best>.6?'stranger':'';
+          if(w){who=w;status(w==='owner'?'👁 вижу '+mem.name:'👁 вижу незнакомца')}}}
+    }catch(e){}busy=false},1200);}
 async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(stream.getVideoTracks());
   try{await v.play()}catch(e){}
   let det=null;status('👁 учусь видеть…');
@@ -386,7 +419,7 @@ async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(st
     const fs=await m.FilesetResolver.forVisionTasks(base+'/wasm');
     det=await m.FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:'vendor/face.tflite'},runningMode:'VIDEO',minDetectionConfidence:.6});
   }catch(e){status('👁 зрение не загрузилось');return}
-  status('👁 ищу тебя…');
+  status('👁 ищу тебя…');startRecognition(v);
   setInterval(()=>{if(v.readyState<2||document.hidden)return;const now=Date.now();
     let r;try{r=det.detectForVideo(v,performance.now())}catch(e){return}
     const d=r&&r.detections&&r.detections[0];
@@ -394,8 +427,8 @@ async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(st
       const wasGone=!seen&&now-lastSeen>6000;seen=true;lastSeen=now;status('👁 вижу тебя');
       if(emo==='sleep'||hurt())return;
       if(!touching){gazeHold=now;look(Math.max(-1,Math.min(1,x*1.3)),Math.max(-1,Math.min(1,y)))}
-      if(wasGone&&!alarm&&!working){setEmo('happy',true);SND.hello();say('О! '+mem.name+', я тебя вижу!',3000,true);lastInput=now;
-        setTimeout(()=>emo==='happy'&&setEmo('normal',true),3000)}
+      if(wasGone){who='';greetAt=now;}
+      if(greetAt&&!alarm&&!working&&(who||now-greetAt>(faceReady?5000:2500))){const w=who;greetAt=0;greet(w)}
     }else if(seen&&now-lastSeen>4000){seen=false;status('👁 не вижу тебя');
       if(emo!=='sleep'&&!hurt()&&!alarm&&!working){setEmo('sad',true);SND.where();say('Ты где?..',3000);
         setTimeout(()=>emo==='sad'&&setEmo('normal',true),4000)}}
