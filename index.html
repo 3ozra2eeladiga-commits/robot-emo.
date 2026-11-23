@@ -100,6 +100,9 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 #ear{position:fixed;left:0;right:0;top:calc(92px + env(safe-area-inset-top,0px));text-align:center;font:700 13px var(--font);opacity:.6;pointer-events:none;padding:0 16px}
 @media (orientation:landscape){#ear{top:calc(74px + env(safe-area-inset-top,0px))}}
 #cam{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+#status,#ear{top:auto!important;font-size:12px}
+#status{bottom:calc(30px + env(safe-area-inset-bottom,0px))}
+#ear{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 @media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span,.alarm #face{animation:none}}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
