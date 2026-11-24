@@ -190,7 +190,7 @@ function paintTeach(){if(!$('t-level'))return;
 
 /* ---------- sound: little chirps made right in the browser ---------- */
 let ac=null,tts=null;
-function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(ac&&ac.state==='suspended')ac.resume().catch(()=>{});}
+function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)();loadClips()}catch(e){}}if(ac&&ac.state==='suspended')ac.resume().catch(()=>{});}
 let selfSound=0,voiceOn=false;
 function chirp(notes,type){ // notes: [[fromHz,toHz,seconds],...]
   if(!ac||quiet()||emo==='sleep')return;let t=ac.currentTime+.02,total=0;
@@ -243,25 +243,24 @@ function whirr(){if(!ac||quiet()||emo==='sleep')return;const t=ac.currentTime+.0
   o.type='sawtooth';o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(190,t+.1);o.frequency.exponentialRampToValueAtTime(120,t+.2);
   lp.type='lowpass';lp.frequency.value=700;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.06,t+.03);g.gain.exponentialRampToValueAtTime(.0001,t+.22);
   o.connect(lp).connect(g).connect(ac.destination);o.start(t);o.stop(t+.24)}
+/* ---------- real recorded robot voice (CC0 clips in sounds/) ---------- */
+const CLIPS={f:20,m:36},clipBuf={},clipLast={f:-1,m:-1};let clipsLoading=false;
+function loadClips(){if(clipsLoading||!ac)return;clipsLoading=true;
+  ['f','m'].forEach(v=>{for(let i=0;i<CLIPS[v];i++){const n=v+String(i).padStart(2,'0');
+    fetch('sounds/'+n+'.mp3').then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>new Promise((ok,no)=>ac.decodeAudioData(b,ok,no))).then(buf=>{clipBuf[n]=buf}).catch(()=>{})}})}
+function playClip(rate){if(!ac||quiet()||emo==='sleep')return 0;loadClips();
+  const v=mem.voice==='m'?'m':'f',have=Object.keys(clipBuf).filter(n=>n[0]===v);
+  if(!have.length)return 0;
+  let n;do{n=have[Math.floor(Math.random()*have.length)]}while(have.length>1&&n===clipLast[v]);clipLast[v]=n;
+  const src=ac.createBufferSource(),g=ac.createGain();src.buffer=clipBuf[n];src.playbackRate.value=rate||1;g.gain.value=.9;
+  src.connect(g).connect(ac.destination);src.start();
+  const ms=clipBuf[n].duration/(rate||1)*1000;selfSound=Math.max(selfSound,Date.now()+ms+500);return ms}
 function babble(text){ // say one key word out loud, the rest is in the bubble
-  const words=text.toLowerCase().match(/[а-яё]+/g)||[];if(!words.length)return;
-  let w=words.includes(mem.name.toLowerCase())?mem.name:words.find(x=>x.length>2)||words[0];
-  if((w.match(/[аяоёуюыэеи]/g)||[]).length>3)w=w.match(/^(?:[^аяоёуюыэеи]*[аяоёуюыэеи]){3}/)[0];
-  const ms=voice(w,{ask:/\?/.test(text),sad:/[…]|грус|обид|пока/.test(text.toLowerCase()),happy:/!/.test(text)});
-  if(words.length>2)setTimeout(()=>chirp([[700,950,.07],[950,800,.07]]),ms+60)}
+  const tl=text.toLowerCase();return playClip(/\?/.test(text)?1.12:/…|грус|обид|пока/.test(tl)?.86:/!/.test(text)?1.06:1);}
 const SND={
-  happy:()=>chirp([[700,1100,.1],[900,1500,.12]]),
-  surprised:()=>chirp([[500,1600,.18]]),
-  sad:()=>chirp([[700,400,.25],[500,280,.35]]),
-  angry:()=>chirp([[220,180,.12],[220,160,.18]],'square'),
-  love:()=>chirp([[800,1200,.1],[1200,900,.1],[900,1400,.16]]),
-  hurt:()=>chirp([[900,500,.2],[450,300,.4]],'triangle'),
-  normal:()=>chirp([[900,1000,.07]]),
-  alarm:()=>chirp([[900,1400,.09],[900,1400,.09],[1100,1700,.14]]),
-  bored:()=>chirp([[600,800,.1],[800,600,.1],[600,900,.14]]),
-  hello:()=>chirp([[500,900,.14],[900,700,.1],[700,1300,.2]]),
-  where:()=>chirp([[700,900,.16],[900,1300,.24]]),
-  ok:()=>chirp([[1000,1300,.08]])
+  happy:()=>playClip(1.1),surprised:()=>playClip(1.2),sad:()=>playClip(.84),angry:()=>playClip(.9),
+  love:()=>playClip(1.04),hurt:()=>playClip(.76),normal:()=>playClip(1),alarm:()=>playClip(1.15),
+  bored:()=>playClip(1),hello:()=>playClip(1.06),where:()=>playClip(1.14),ok:()=>{}
 };
 
 /* ---------- speech bubble ---------- */
@@ -276,7 +275,7 @@ function say(text,ms,speak){sayT.textContent=text;clearTimeout(sayTimer);
     speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}else babble(text)}
 
 /* ---------- face ---------- */
-function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&Math.random()<.6)whirr();if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
+function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
 function look(x,y){const dx=x*7,dy=y*6,sq=1-Math.abs(x)*.12;
   L.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x>0?sq:1})`;
   R.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x<0?sq:1})`;}
@@ -343,8 +342,8 @@ setInterval(()=>{const now=Date.now(),h=new Date().getHours(),night=h>=23||h<7;
 
 /* ---------- buttons ---------- */
 $('b-teach').onclick=()=>{audio();paintTeach();$('teach').hidden=false;bar.classList.add('hide')};
-const paintVoice=()=>{$('t-voice').textContent=mem.voice==='words'?'Голос: говорит словами (нажми — будет пищать)':'Голос: пищит по-своему (нажми — будет говорить словами)'};
-paintVoice();$('t-voice').onclick=()=>{audio();voiceOn=true;mem.voice=mem.voice==='words'?'':'words';save();paintVoice();say('Вот так я теперь говорю!',3000,true)};
+const paintVoice=()=>{$('t-voice').textContent=mem.voice==='m'?'Голос: низкий (нажми — будет тонкий)':'Голос: тонкий (нажми — будет низкий)'};
+paintVoice();$('t-voice').onclick=()=>{audio();mem.voice=mem.voice==='m'?'f':'m';save();paintVoice();playClip(1)};
 $('t-close').onclick=()=>{$('teach').hidden=true;wake()};
 $('t-name').onchange=()=>{const v=$('t-name').value.trim();if(v){mem.name=v;save();say('Запомнил! Ты — '+v,3000,true)}};
 $('t-add').onclick=()=>{addPair($('t-q').value,$('t-a').value);if($('t-q').value.trim()&&$('t-a').value.trim()){$('t-q').value='';$('t-a').value=''}};
@@ -385,7 +384,7 @@ function heard(text){const s=text.toLowerCase().trim().replace(/[.!?]+$/,'');las
   if(/что (ты )?делаешь|чем занят/.test(s)){setEmo('happy');say('Смотрю на тебя и жду, когда поиграем!',4000,true);return}
   if(/сколько врем|который час/.test(s)){const d=new Date();setEmo('happy',true);say('Сейчас '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'),4000,true);return}
   if(/милый|милаш|красив|умни|классный|крутой/.test(s)){mem.pats++;if(!grow()){setEmo('love');say('Ой, спасибо! Я стесняюсь 💗',3500,true)}return}
-  if(/спой|песн/.test(s)){setEmo('happy',true);say('Ля-ля-ля! Ла-ла-ла! Ту-ру-ру!',4000);chirp([[523,523,.2],[659,659,.2],[784,784,.2],[659,659,.2],[523,523,.2],[784,1046,.4]]);return}
+  if(/спой|песн/.test(s)){setEmo('happy',true);say('Ля-ля-ля! Ла-ла-ла! Ту-ру-ру!',4000);const d=playClip(1.25);setTimeout(()=>playClip(1.35),d+150);return}
   if(/шутк|анекдот|рассмеши/.test(s)){setEmo('happy');say('Почему робот не боится дождя? Потому что он — я, а я сижу дома!',6000,true);return}
   if(/потанцуй|танц/.test(s)){setEmo('happy',true);SND.love();root.classList.add('alarm');say('Смотри, как я умею!',3000);setTimeout(()=>{if(!alarm)root.classList.remove('alarm')},3000);return}
   if(/скучн|грустн|устал/.test(s)){setEmo('sad',true);say('Я рядом. Хочешь, спою? Скажи «спой»',4500,true);return}
