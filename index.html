@@ -202,20 +202,53 @@ function chirp(notes,type){ // notes: [[fromHz,toHz,seconds],...]
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.2,t+.025);g.gain.exponentialRampToValueAtTime(.0001,t+n[2]);
     g.connect(ac.destination);lfo.start(t);lfo.stop(t+n[2]+.03);t+=n[2]+.05;total+=n[2]+.05});
   selfSound=Math.max(selfSound,Date.now()+total*1000+500);}
-function babble(text){ // the robot's own squeaky language: one little note per syllable
-  if(!ac||quiet()||emo==='sleep')return;
-  const n=Math.min(14,Math.max(2,(text.match(/[аеёиоуыэюяaeiou]/gi)||[]).length)),ask=/\?/.test(text),wow=/!/.test(text);
-  let t=ac.currentTime+.03;const t0=t;
-  const out=ac.createGain(),lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3200;out.gain.value=.9;out.connect(lp).connect(ac.destination);
-  for(let i=0;i<n;i++){const ch=text.charCodeAt((i*3+1)%text.length)||77;
-    let f=(wow?640:560)+(ch%9)*48;if(ask&&i>=n-2)f*=1.18+.12*(i-(n-2));
-    const dur=.06+(ch%3)*.022,bend=ch%2?1.22:.84,g=ac.createGain();
-    [[1,'triangle',1],[2,'sine',.28]].forEach(v=>{const o=ac.createOscillator(),og=ac.createGain();o.type=v[1];og.gain.value=v[2];
-      o.frequency.setValueAtTime(f*v[0],t);o.frequency.exponentialRampToValueAtTime(f*bend*v[0],t+dur);
-      o.connect(og).connect(g);o.start(t);o.stop(t+dur+.03)});
-    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.2,t+.012);g.gain.exponentialRampToValueAtTime(.0001,t+dur+.02);
-    g.connect(out);t+=dur+.035+((i+1)%4===0?.09:0)}
-  selfSound=Math.max(selfSound,Date.now()+(t-t0)*1000+500);}
+/* ---------- robot voice: a squeaky mechanical voice that says short words, like a little cartoon robot ---------- */
+const VOW={'а':[820,1250],'я':[760,1450],'о':[540,900],'ё':[540,1050],'у':[360,760],'ю':[360,1100],'ы':[400,1500],'э':[560,1750],'е':[500,1950],'и':[330,2250]};
+let noiseBuf=null;
+function noise(){if(!noiseBuf){noiseBuf=ac.createBuffer(1,ac.sampleRate*.5,ac.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}return noiseBuf}
+function vbus(){const g=ac.createGain(),ws=ac.createWaveShaper(),hp=ac.createBiquadFilter(),c=new Float32Array(256);
+  for(let i=0;i<256;i++){const x=i/128-1;c[i]=Math.tanh(x*2.2)}ws.curve=c;hp.type='highpass';hp.frequency.value=180;g.gain.value=.38;
+  g.connect(ws).connect(hp).connect(ac.destination);return g}
+function voice(word,opt){ // opt: {ask, sad, happy, slow}
+  if(!ac||quiet()||emo==='sleep')return 0;opt=opt||{};
+  const w=word.toLowerCase().replace(/[^а-яё]/g,'');if(!w)return 0;
+  const out=vbus();let t=ac.currentTime+.04;const t0=t;
+  const nv=(w.match(/[аяоёуюыэеи]/g)||[]).length;let k=0,onset='';
+  let f0=opt.sad?250:opt.happy?360:320;
+  for(const ch of w){
+    if(!VOW[ch]){onset=ch;continue}
+    const last=k===nv-1,first=k===0;
+    // consonant before the vowel
+    if(/[сшщжзфхцч]/.test(onset)){const n=ac.createBufferSource(),bp=ac.createBiquadFilter(),g=ac.createGain();n.buffer=noise();
+      bp.type='bandpass';bp.frequency.value=/[шщжч]/.test(onset)?2800:4800;bp.Q.value=1.2;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+.08);
+      n.connect(bp).connect(g).connect(out);n.start(t);n.stop(t+.09);t+=.07}
+    else if(/[птккбдг]/.test(onset)){t+=.035;const n=ac.createBufferSource(),g=ac.createGain();n.buffer=noise();g.gain.setValueAtTime(.4,t);g.gain.exponentialRampToValueAtTime(.0001,t+.018);
+      n.connect(g).connect(out);n.start(t);n.stop(t+.02);t+=.012}
+    const son=/[млнрвй]/.test(onset);
+    // the vowel itself: buzzy source -> two formant filters
+    let dur=(opt.slow?.24:.15)+(last?.2:0);
+    let a=f0*(first?1.12:1)*(.94+Math.random()*.12),b=a*(last?(opt.ask?1.45:opt.sad?.7:.82):(Math.random()<.5?1.08:.95));
+    const src=ac.createOscillator(),src2=ac.createOscillator(),vib=ac.createOscillator(),vg=ac.createGain(),mix=ac.createGain(),env=ac.createGain();
+    src.type='sawtooth';src2.type='square';src2.detune.value=8;vib.frequency.value=6.5;vg.gain.value=a*.035;vib.connect(vg);vg.connect(src.frequency);vg.connect(src2.frequency);
+    const st=son?t-.06:t;
+    [src,src2].forEach((o,i)=>{o.frequency.setValueAtTime(a*(i?2:1),st);o.frequency.exponentialRampToValueAtTime(b*(i?2:1),t+dur);
+      const g=ac.createGain();g.gain.value=i?.12:.6;o.connect(g).connect(mix)});
+    const fm=VOW[ch];[[fm[0],7,1],[fm[1],9,.55],[3100,6,.12]].forEach(([fr,q,gn])=>{const bp=ac.createBiquadFilter(),g=ac.createGain();bp.type='bandpass';
+      bp.frequency.setValueAtTime(son?fr*.55:fr,st);bp.frequency.linearRampToValueAtTime(fr,t+.04);bp.Q.value=q;g.gain.value=gn*3.2;mix.connect(bp).connect(g).connect(env)});
+    env.gain.setValueAtTime(.0001,st);env.gain.exponentialRampToValueAtTime(son?.5:.9,st+.025);env.gain.setValueAtTime(.9,t+dur*.7);env.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    env.connect(out);[src,src2,vib].forEach(o=>{o.start(st);o.stop(t+dur+.03)});
+    t+=dur+.025;k++;onset=''}
+  const ms=(t-t0)*1000;selfSound=Math.max(selfSound,Date.now()+ms+500);return ms}
+function whirr(){if(!ac||quiet()||emo==='sleep')return;const t=ac.currentTime+.01,o=ac.createOscillator(),lp=ac.createBiquadFilter(),g=ac.createGain();
+  o.type='sawtooth';o.frequency.setValueAtTime(90,t);o.frequency.exponentialRampToValueAtTime(190,t+.1);o.frequency.exponentialRampToValueAtTime(120,t+.2);
+  lp.type='lowpass';lp.frequency.value=700;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.06,t+.03);g.gain.exponentialRampToValueAtTime(.0001,t+.22);
+  o.connect(lp).connect(g).connect(ac.destination);o.start(t);o.stop(t+.24)}
+function babble(text){ // say one key word out loud, the rest is in the bubble
+  const words=text.toLowerCase().match(/[а-яё]+/g)||[];if(!words.length)return;
+  let w=words.includes(mem.name.toLowerCase())?mem.name:words.find(x=>x.length>2)||words[0];
+  if((w.match(/[аяоёуюыэеи]/g)||[]).length>3)w=w.match(/^(?:[^аяоёуюыэеи]*[аяоёуюыэеи]){3}/)[0];
+  const ms=voice(w,{ask:/\?/.test(text),sad:/[…]|грус|обид|пока/.test(text.toLowerCase()),happy:/!/.test(text)});
+  if(words.length>2)setTimeout(()=>chirp([[700,950,.07],[950,800,.07]]),ms+60)}
 const SND={
   happy:()=>chirp([[700,1100,.1],[900,1500,.12]]),
   surprised:()=>chirp([[500,1600,.18]]),
@@ -243,7 +276,7 @@ function say(text,ms,speak){sayT.textContent=text;clearTimeout(sayTimer);
     speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}else babble(text)}
 
 /* ---------- face ---------- */
-function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
+function setEmo(e,silent){emo=e;face.className=e;if(e!=='sleep'&&Math.random()<.6)whirr();if(e!=='sleep'&&e!=='hurt')look(0,0);if(!silent&&SND[e])SND[e]();}
 function look(x,y){const dx=x*7,dy=y*6,sq=1-Math.abs(x)*.12;
   L.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x>0?sq:1})`;
   R.style.transform=`translate(${dx}vmin,${dy}vmin) scale(${x<0?sq:1})`;}
