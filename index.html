@@ -26,7 +26,11 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 .eye{position:relative;width:24vmin;height:32vmin;background:var(--eye);border-radius:32%;
   overflow:hidden;box-shadow:0 0 6vmin var(--glow);
   transition:transform .25s ease,border-radius .3s ease,height .3s ease,width .3s ease,background .3s}
-.lid{position:absolute;left:-25%;width:150%;height:0;background:var(--bg);transition:height .3s ease,transform .3s ease,border-radius .3s}
+.eye::before,.eye::after{content:"";position:absolute;border-radius:50%;background:#fff;pointer-events:none;transition:opacity .3s}
+.eye::before{width:30%;height:22%;left:16%;top:14%;opacity:.92}
+.eye::after{width:13%;height:10%;left:58%;top:42%;opacity:.8}
+.happy .eye::after,.sleep .eye::before,.sleep .eye::after,.hurt .eye::after,.angry .eye::after{opacity:0}
+.lid{z-index:1;position:absolute;left:-25%;width:150%;height:0;background:var(--bg);transition:height .3s ease,transform .3s ease,border-radius .3s}
 .lid.t{top:-2%;transform-origin:50% 0}
 .lid.b{bottom:-2%;transform-origin:50% 100%}
 .blush{position:absolute;bottom:-9vmin;width:12vmin;height:5vmin;border-radius:50%;background:var(--blush);
@@ -47,6 +51,11 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 .surprised .eye{width:28vmin;height:28vmin;border-radius:50%}
 .love .eye{border-radius:50% 50% 50% 50%/60% 60% 40% 40%;background:var(--blush);box-shadow:0 0 6vmin rgba(255,122,168,.5)}
 .shy .eye{height:16vmin;width:20vmin}
+.scared .eye{width:18vmin;height:23vmin;border-radius:45%;animation:tremble .14s infinite}
+.scared .lid.t{height:16%}
+.scared #L .lid.t{transform:rotate(-16deg)}
+.scared #R .lid.t{transform:rotate(16deg)}
+@keyframes tremble{0%,100%{translate:0 0}50%{translate:.45vmin 0}}
 .focus .lid.t{height:30%}
 .sleep .eye{transform:scaleY(.07)}
 .sleep .wrap{transform:translate(0,4vmin)!important}
@@ -103,7 +112,7 @@ body{font-family:var(--font);padding-left:max(16px,env(safe-area-inset-left,0px)
 #status,#ear{top:auto!important;font-size:12px}
 #status{bottom:calc(30px + env(safe-area-inset-bottom,0px))}
 #ear{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
-@media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}#zzz span,.alarm #face{animation:none}}
+@media (prefers-reduced-motion:reduce){.wrap,.eye,.lid{transition:none}.scared .eye{animation:none}#zzz span,.alarm #face{animation:none}}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&display=swap">
 
@@ -419,9 +428,11 @@ function startEars(stream){if(!ac)return;let an;
 /* ---------- recognising the owner's face ---------- */
 let faceReady=false,who='',greetAt=0,enroll=0,lastStranger=0;
 mem.faces=mem.faces||[];
+function scared(){if(emo==='sleep'||hurt())return;const first=emo!=='scared';setEmo('scared',true);lastInput=Date.now();
+  if(first&&Date.now()-lastStranger>20000){lastStranger=Date.now();playClip(1.25,'sad');say('Ой… ты кто? Я тебя боюсь…',4000)}}
 function greet(w){lastInput=Date.now();
   if(w==='owner'){setEmo('happy',true);SND.hello();say(mem.name+'! Я тебя узнал!',3500,true)}
-  else if(w==='stranger'){if(Date.now()-lastStranger<30000)return;lastStranger=Date.now();setEmo('surprised',true);SND.where();say('Ой… а ты кто? Я тебя не знаю',4000,true)}
+  else if(w==='stranger'){scared();return}
   else{setEmo('happy',true);SND.hello();say('Привет! Я тебя вижу',3000,true)}
   setTimeout(()=>{if(emo==='happy'||emo==='surprised')setEmo('normal',true)},3500)}
 function dist(a,b){let s=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];s+=d*d}return Math.sqrt(s)}
@@ -441,7 +452,9 @@ async function startRecognition(v){const B='https://cdn.jsdelivr.net/npm/@vladma
           if(enroll===0){setEmo('love');say('Запомнил! Теперь я узнаю тебя, '+mem.name+' 💗',4500,true);who='owner';greetAt=0}}
         else{const best=Math.min(...mem.faces.map(f=>dist(f,d)));
           const w=best<.5?'owner':best>.6?'stranger':'';
-          if(w){who=w;status(w==='owner'?'👁 вижу '+mem.name:'👁 вижу незнакомца')}}}
+          if(w){const was=who;who=w;status(w==='owner'?'👁 вижу '+mem.name:'👁 вижу незнакомца');
+            if(w==='stranger'&&emo!=='scared'&&!alarm&&!greetAt)scared();
+            if(w==='owner'&&emo==='scared'){setEmo('happy',true);SND.hello();say('Фух! Это ты, '+mem.name+'! 💗',3500,true);setTimeout(()=>emo==='happy'&&setEmo('normal',true),3500)}}}}
     }catch(e){}busy=false},1200);}
 async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(stream.getVideoTracks());
   try{await v.play()}catch(e){}
@@ -458,11 +471,11 @@ async function startEyes(stream){const v=$('cam');v.srcObject=new MediaStream(st
     if(d){const b=d.boundingBox,x=1-2*(b.originX+b.width/2)/v.videoWidth,y=2*(b.originY+b.height/2)/v.videoHeight-1;
       const wasGone=!seen&&now-lastSeen>6000;seen=true;lastSeen=now;status('👁 вижу тебя');
       if(emo==='sleep'||hurt())return;
-      if(!touching){gazeHold=now;look(Math.max(-1,Math.min(1,x*1.3)),Math.max(-1,Math.min(1,y)))}
+      if(!touching){gazeHold=now;if(emo==='scared'){const peek=Math.random()<.25;look(peek?x*.6:-(x>0?1:-1)*.85,peek?y*.5:.5)}else look(Math.max(-1,Math.min(1,x*1.3)),Math.max(-1,Math.min(1,y)))}
       if(wasGone){who='';greetAt=now;}
       if(greetAt&&!alarm&&!working&&(who||now-greetAt>(faceReady?5000:2500))){const w=who;greetAt=0;greet(w)}
     }else if(seen&&now-lastSeen>4000){seen=false;status('👁 не вижу тебя');
-      if(emo!=='sleep'&&!hurt()&&!alarm&&!working){setEmo('sad',true);SND.where();say('Ты где?..',3000);
+      if(emo==='scared'){setEmo('normal',true)}else if(emo!=='sleep'&&!hurt()&&!alarm&&!working){setEmo('sad',true);SND.where();say('Ты где?..',3000);
         setTimeout(()=>emo==='sad'&&setEmo('normal',true),4000)}}
   },160);}
 
